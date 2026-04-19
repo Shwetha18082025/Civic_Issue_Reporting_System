@@ -137,3 +137,44 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+# ===========================
+# Civil Issue System - Custom
+# ===========================
+
+# Environment variables (Supabase keys, DB passwords etc.)
+.env.local
+.env.production
+.env.development
+
+# Python (for ML models)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+.pytest_cache/
+
+# ML model files (large files - use Git LFS if needed)
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+*.onnx
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# VS Code settings (optional - remove if you want to share settings with team)
+.vscode/
+*.code-workspace
+
+# Supabase local dev
+supabase/.branches
+supabase/.temp
