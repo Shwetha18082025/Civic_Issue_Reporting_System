@@ -41,9 +41,7 @@ export default function Home() {
   minHeight: '92vh',
   display: 'flex',
   alignItems: 'center',
-  background: 'radial-gradient(ellipse at 20% 50%, rgba(245,158,11,0.08) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(99,102,241,0.1) 0%, transparent 50%), linear-gradient(135deg, #0a0f2e 0%, #111a45 50%, #0f172a 100%)',
-  backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px)',
-  backgroundSize: '28px 28px',
+  background: 'linear-gradient(135deg, #0a0f2e 0%, #111a45 50%, #0f172a 100%)',
 }}>
         <div style={{ maxWidth: '860px', margin: '0 auto', textAlign: 'center' }}>
 

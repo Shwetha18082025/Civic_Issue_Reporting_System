@@ -26,7 +26,7 @@ const labelStyle = {
 }
 
 export default function ReportIssue() {
-  const { user, profile } = useAuth()
+  const { user } = useAuth()
   const navigate = useNavigate()
 
   const [categories, setCategories] = useState([])
@@ -40,12 +40,12 @@ export default function ReportIssue() {
     latitude: null,
     longitude: null,
   })
-  const [images, setImages] = useState([])       // File objects
-  const [previews, setPreviews] = useState([])   // Preview URLs
+  const [images, setImages] = useState([])
+  const [previews, setPreviews] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [locationLoading, setLocationLoading] = useState(false)
-  const [step, setStep] = useState(1)            // 1 = details, 2 = location, 3 = photos
+  const [step, setStep] = useState(1)
   const fileInputRef = useRef()
 
   // Load categories from Supabase
@@ -65,7 +65,7 @@ export default function ReportIssue() {
       setError('Maximum 3 images allowed.')
       return
     }
-    const validFiles = files.filter(f => f.size < 5 * 1024 * 1024) // 5MB limit
+    const validFiles = files.filter(f => f.size < 5 * 1024 * 1024)
     if (validFiles.length !== files.length) {
       setError('Some files were skipped — max size is 5MB per image.')
     }
@@ -90,8 +90,6 @@ export default function ReportIssue() {
       async (pos) => {
         const { latitude, longitude } = pos.coords
         setFormData(prev => ({ ...prev, latitude, longitude }))
-
-        // Reverse geocode using OpenStreetMap Nominatim (free, no API key)
         try {
           const res = await fetch(
             `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`
@@ -105,11 +103,11 @@ export default function ReportIssue() {
             ward: addr.suburb || addr.neighbourhood || addr.county || '',
           }))
         } catch {
-          // If geocoding fails, coordinates are still saved
+          // coordinates still saved even if geocoding fails
         }
         setLocationLoading(false)
       },
-      (err) => {
+      () => {
         setError('Could not detect location. Please enter it manually.')
         setLocationLoading(false)
       },
@@ -137,88 +135,92 @@ export default function ReportIssue() {
     return uploadedUrls
   }
 
-  // Final submit
-// Final submit
-async function handleSubmit() {
-  setError('')
-
-  if (!formData.title.trim()) return setError('Please enter a title.')
-  if (!formData.description.trim()) return setError('Please enter a description.')
-  if (!formData.category_id) return setError('Please select a category.')
-  if (!formData.latitude || !formData.longitude) return setError('Please detect or enter your location.')
-
-  setLoading(true)
-  try {
-    // 1. Call ML API to get predicted category + priority
-    let mlPrediction = { category: null, confidence: 0, priority: 'medium' }
+  // Call ML API
+  async function callMLAPI(description, imageFile) {
     try {
-      const mlForm = new FormData()
-      mlForm.append('text', formData.description)
-      if (images.length > 0) {
-        mlForm.append('image', images[0])
-      }
-      const mlRes = await fetch('http://127.0.0.1:8001/predict', {
+      const form = new FormData()
+      form.append('text', description)
+      if (imageFile) form.append('image', imageFile)
+
+      const res = await fetch('http://localhost:8000/predict', {
         method: 'POST',
-        body: mlForm,
+        body: form,
       })
-      if (mlRes.ok) {
-        mlPrediction = await mlRes.json()
-      }
-    } catch {
-      // ML API unavailable — continue without it
+      if (!res.ok) return null
+      return await res.json()
+    } catch (err) {
+      console.warn('ML API unavailable, submitting without ML:', err)
+      return null
     }
-
-    // 2. Insert the issue (with ML results)
-    const { data: issue, error: issueError } = await supabase
-      .from('issues')
-      .insert({
-        title: formData.title.trim(),
-        description: formData.description.trim(),
-        category_id: formData.category_id,
-        address: formData.address,
-        ward: formData.ward,
-        city: formData.city,
-        latitude: formData.latitude,
-        longitude: formData.longitude,
-        reported_by: user.id,
-        status: 'pending',
-        priority: mlPrediction.priority || 'medium',
-        ml_category: mlPrediction.category || null,
-        ml_confidence: mlPrediction.confidence || null,
-      })
-      .select()
-      .single()
-
-    if (issueError) throw issueError
-
-    // 3. Upload images if any
-    if (images.length > 0) {
-      const imageUrls = await uploadImages(issue.id)
-      const imageRows = imageUrls.map(url => ({
-        issue_id: issue.id,
-        image_url: url,
-      }))
-      await supabase.from('issue_images').insert(imageRows)
-    }
-
-    navigate('/my-issues', {
-      state: { success: 'Issue reported successfully! Authorities have been notified.' }
-    })
-
-  } catch (err) {
-    setError(err.message || 'Something went wrong. Please try again.')
   }
-  setLoading(false)
-}
 
-      // 3. Redirect to my issues
+  // Final submit
+  async function handleSubmit() {
+    setError('')
+
+    if (!formData.title.trim())       return setError('Please enter a title.')
+    if (!formData.description.trim()) return setError('Please enter a description.')
+    if (!formData.category_id)        return setError('Please select a category.')
+    if (!formData.latitude || !formData.longitude)
+      return setError('Please detect or enter your location.')
+
+    setLoading(true)
+
+    try {
+      // 1. Call ML API (non-blocking — issue submits even if ML fails)
+      const mlResult = await callMLAPI(formData.description, images[0] || null)
+      console.log('ML Result:', mlResult)
+
+      const mlCategory   = mlResult?.category   || null
+      const mlConfidence = mlResult?.confidence  || null
+      const mlPriority   = mlResult?.priority    || 'medium'
+
+      // 2. Insert issue into Supabase
+      const { data: issue, error: issueError } = await supabase
+        .from('issues')
+        .insert({
+          title:         formData.title.trim(),
+          description:   formData.description.trim(),
+          category_id:   formData.category_id,
+          address:       formData.address,
+          ward:          formData.ward,
+          city:          formData.city,
+          latitude:      formData.latitude,
+          longitude:     formData.longitude,
+          reported_by:   user.id,
+          status:        'pending',
+          priority:      mlPriority,
+          ml_category:   mlCategory,
+          ml_confidence: mlConfidence,
+        })
+        .select()
+        .single()
+
+      if (issueError) throw issueError
+
+      // 3. Upload images if any
+      if (images.length > 0) {
+        const imageUrls = await uploadImages(issue.id)
+        const imageRows = imageUrls.map(url => ({
+          issue_id:  issue.id,
+          image_url: url,
+        }))
+        await supabase.from('issue_images').insert(imageRows)
+      }
+
+      // 4. Redirect with success message
       navigate('/my-issues', {
-        state: { success: 'Issue reported successfully! Authorities have been notified.' }
+        state: {
+          success: mlCategory
+            ? `Issue reported! AI classified it as: ${mlCategory.replace('_', ' ')} — Priority: ${mlPriority}`
+            : 'Issue reported successfully! Authorities have been notified.'
+        }
       })
 
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.')
     }
+
     setLoading(false)
   }
 
@@ -270,9 +272,12 @@ async function handleSubmit() {
 
       {/* Form Card */}
       <div style={{ maxWidth: '680px', margin: '2rem auto', padding: '0 1.5rem 4rem' }}>
-        <div style={{ background: 'white', borderRadius: '20px', padding: '2rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 24px rgba(10,15,46,0.06)' }}>
+        <div style={{
+          background: 'white', borderRadius: '20px', padding: '2rem',
+          border: '1px solid #e2e8f0', boxShadow: '0 4px 24px rgba(10,15,46,0.06)',
+        }}>
 
-          {/* Error */}
+          {/* Error banner */}
           {error && (
             <div style={{
               background: '#fef2f2', border: '1px solid #fecaca',
@@ -325,7 +330,7 @@ async function handleSubmit() {
                   name="description"
                   value={formData.description}
                   onChange={handleChange}
-                  placeholder="Describe the issue in detail — how bad is it, how long has it been there, any safety risk?"
+                  placeholder="Describe the issue — how bad is it, how long has it been there, any safety risk?"
                   onFocus={e => e.target.style.borderColor = '#f59e0b'}
                   onBlur={e => e.target.style.borderColor = '#e2e8f0'}
                 />
@@ -352,8 +357,6 @@ async function handleSubmit() {
           {/* ── Step 2: Location ── */}
           {step === 2 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-
-              {/* GPS detect button */}
               <div style={{
                 background: '#f8f9fc', border: '1.5px dashed #cbd5e1',
                 borderRadius: '12px', padding: '1.5rem', textAlign: 'center',
@@ -370,7 +373,12 @@ async function handleSubmit() {
                     )}
                     <button
                       onClick={detectLocation}
-                      style={{ marginTop: '0.75rem', background: 'none', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.4rem 0.9rem', fontSize: '0.8rem', color: '#64748b', cursor: 'pointer' }}
+                      style={{
+                        marginTop: '0.75rem', background: 'none',
+                        border: '1px solid #cbd5e1', borderRadius: '8px',
+                        padding: '0.4rem 0.9rem', fontSize: '0.8rem',
+                        color: '#64748b', cursor: 'pointer',
+                      }}
                     >
                       Re-detect
                     </button>
@@ -397,17 +405,18 @@ async function handleSubmit() {
                 )}
               </div>
 
-              {/* Manual fields */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
                   <label style={labelStyle}>City</label>
-                  <input style={inputStyle} name="city" value={formData.city} onChange={handleChange} placeholder="e.g. Bengaluru"
+                  <input style={inputStyle} name="city" value={formData.city}
+                    onChange={handleChange} placeholder="e.g. Bengaluru"
                     onFocus={e => e.target.style.borderColor = '#f59e0b'}
                     onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
                 </div>
                 <div>
                   <label style={labelStyle}>Ward / Area</label>
-                  <input style={inputStyle} name="ward" value={formData.ward} onChange={handleChange} placeholder="e.g. Koramangala"
+                  <input style={inputStyle} name="ward" value={formData.ward}
+                    onChange={handleChange} placeholder="e.g. Koramangala"
                     onFocus={e => e.target.style.borderColor = '#f59e0b'}
                     onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
                 </div>
@@ -415,7 +424,8 @@ async function handleSubmit() {
 
               <div>
                 <label style={labelStyle}>Full Address</label>
-                <input style={inputStyle} name="address" value={formData.address} onChange={handleChange} placeholder="Street address or landmark"
+                <input style={inputStyle} name="address" value={formData.address}
+                  onChange={handleChange} placeholder="Street address or landmark"
                   onFocus={e => e.target.style.borderColor = '#f59e0b'}
                   onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
               </div>
@@ -454,9 +464,11 @@ async function handleSubmit() {
           {step === 3 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
-              {/* Upload area */}
               <div>
-                <label style={labelStyle}>Upload Photos <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optional, max 3)</span></label>
+                <label style={labelStyle}>
+                  Upload Photos{' '}
+                  <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optional, max 3)</span>
+                </label>
                 <div
                   onClick={() => fileInputRef.current.click()}
                   style={{
@@ -464,8 +476,14 @@ async function handleSubmit() {
                     padding: '2rem', textAlign: 'center', cursor: 'pointer',
                     transition: 'all 0.2s', background: '#f8f9fc',
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#f59e0b'; e.currentTarget.style.background = '#fffbeb' }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#f8f9fc' }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = '#f59e0b'
+                    e.currentTarget.style.background = '#fffbeb'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = '#cbd5e1'
+                    e.currentTarget.style.background = '#f8f9fc'
+                  }}
                 >
                   <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📸</div>
                   <p style={{ color: '#475569', fontSize: '0.9rem', fontWeight: 500 }}>Click to upload photos</p>
@@ -488,7 +506,10 @@ async function handleSubmit() {
                     <div key={i} style={{ position: 'relative', width: '100px', height: '100px' }}>
                       <img
                         src={src} alt={`preview-${i}`}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px', border: '2px solid #e2e8f0' }}
+                        style={{
+                          width: '100%', height: '100%', objectFit: 'cover',
+                          borderRadius: '10px', border: '2px solid #e2e8f0',
+                        }}
                       />
                       <button
                         onClick={() => removeImage(i)}
@@ -505,12 +526,30 @@ async function handleSubmit() {
                 </div>
               )}
 
-              {/* Summary before submit */}
-              <div style={{ background: '#f8f9fc', borderRadius: '12px', padding: '1rem 1.25rem', border: '1px solid #e2e8f0' }}>
-                <p style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Summary</p>
+              {/* ML info banner */}
+              <div style={{
+                background: 'linear-gradient(135deg, #fffbeb, #fef3c7)',
+                border: '1px solid #fde68a', borderRadius: '10px',
+                padding: '0.75rem 1rem', fontSize: '0.82rem', color: '#92400e',
+                display: 'flex', alignItems: 'center', gap: '0.5rem',
+              }}>
+                🤖 Our AI will automatically classify your issue and set priority on submission.
+              </div>
+
+              {/* Summary */}
+              <div style={{
+                background: '#f8f9fc', borderRadius: '12px',
+                padding: '1rem 1.25rem', border: '1px solid #e2e8f0',
+              }}>
+                <p style={{
+                  fontSize: '0.8rem', fontWeight: 600, color: '#475569',
+                  marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em',
+                }}>Summary</p>
                 <p style={{ fontSize: '0.9rem', color: '#0a0f2e', fontWeight: 500 }}>{formData.title}</p>
                 <p style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '0.2rem' }}>
-                  {categories.find(c => c.id === formData.category_id)?.name} · {formData.city || 'Location set'} · {images.length} photo{images.length !== 1 ? 's' : ''}
+                  {categories.find(c => c.id === formData.category_id)?.name}
+                  {' · '}{formData.city || 'Location set'}
+                  {' · '}{images.length} photo{images.length !== 1 ? 's' : ''}
                 </p>
               </div>
 
