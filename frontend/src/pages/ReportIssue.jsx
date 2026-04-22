@@ -138,47 +138,78 @@ export default function ReportIssue() {
   }
 
   // Final submit
-  async function handleSubmit() {
-    setError('')
+// Final submit
+async function handleSubmit() {
+  setError('')
 
-    if (!formData.title.trim()) return setError('Please enter a title.')
-    if (!formData.description.trim()) return setError('Please enter a description.')
-    if (!formData.category_id) return setError('Please select a category.')
-    if (!formData.latitude || !formData.longitude) return setError('Please detect or enter your location.')
+  if (!formData.title.trim()) return setError('Please enter a title.')
+  if (!formData.description.trim()) return setError('Please enter a description.')
+  if (!formData.category_id) return setError('Please select a category.')
+  if (!formData.latitude || !formData.longitude) return setError('Please detect or enter your location.')
 
-    setLoading(true)
+  setLoading(true)
+  try {
+    // 1. Call ML API to get predicted category + priority
+    let mlPrediction = { category: null, confidence: 0, priority: 'medium' }
     try {
-      // 1. Insert the issue
-      const { data: issue, error: issueError } = await supabase
-        .from('issues')
-        .insert({
-          title: formData.title.trim(),
-          description: formData.description.trim(),
-          category_id: formData.category_id,
-          address: formData.address,
-          ward: formData.ward,
-          city: formData.city,
-          latitude: formData.latitude,
-          longitude: formData.longitude,
-          reported_by: user.id,
-          status: 'pending',
-          priority: 'medium',
-        })
-        .select()
-        .single()
-
-      if (issueError) throw issueError
-
-      // 2. Upload images if any
+      const mlForm = new FormData()
+      mlForm.append('text', formData.description)
       if (images.length > 0) {
-        const imageUrls = await uploadImages(issue.id)
-        // Save image URLs to issue_images table
-        const imageRows = imageUrls.map(url => ({
-          issue_id: issue.id,
-          image_url: url,
-        }))
-        await supabase.from('issue_images').insert(imageRows)
+        mlForm.append('image', images[0])
       }
+      const mlRes = await fetch('http://127.0.0.1:8001/predict', {
+        method: 'POST',
+        body: mlForm,
+      })
+      if (mlRes.ok) {
+        mlPrediction = await mlRes.json()
+      }
+    } catch {
+      // ML API unavailable — continue without it
+    }
+
+    // 2. Insert the issue (with ML results)
+    const { data: issue, error: issueError } = await supabase
+      .from('issues')
+      .insert({
+        title: formData.title.trim(),
+        description: formData.description.trim(),
+        category_id: formData.category_id,
+        address: formData.address,
+        ward: formData.ward,
+        city: formData.city,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+        reported_by: user.id,
+        status: 'pending',
+        priority: mlPrediction.priority || 'medium',
+        ml_category: mlPrediction.category || null,
+        ml_confidence: mlPrediction.confidence || null,
+      })
+      .select()
+      .single()
+
+    if (issueError) throw issueError
+
+    // 3. Upload images if any
+    if (images.length > 0) {
+      const imageUrls = await uploadImages(issue.id)
+      const imageRows = imageUrls.map(url => ({
+        issue_id: issue.id,
+        image_url: url,
+      }))
+      await supabase.from('issue_images').insert(imageRows)
+    }
+
+    navigate('/my-issues', {
+      state: { success: 'Issue reported successfully! Authorities have been notified.' }
+    })
+
+  } catch (err) {
+    setError(err.message || 'Something went wrong. Please try again.')
+  }
+  setLoading(false)
+}
 
       // 3. Redirect to my issues
       navigate('/my-issues', {

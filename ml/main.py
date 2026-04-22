@@ -1,5 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
+from priority.priority_scorer import score_priority
 from pydantic import BaseModel
 from typing import Optional
 import joblib
@@ -68,23 +69,27 @@ def predict_image(image_bytes: bytes) -> dict:
 
 def combine(text_result: dict, image_result: Optional[dict]) -> dict:
     if image_result is None:
-        return {**text_result, "source": "text_only"}
-    
-    if image_result["confidence"] >= 0.70:
-        final = image_result["category"]
+        final_category = text_result["category"]
+        source = "text_only"
+        confidence = text_result["confidence"]
+    elif image_result["confidence"] >= 0.70:
+        final_category = image_result["category"]
         source = "image"
+        confidence = image_result["confidence"]
     else:
-        final = text_result["category"]
+        final_category = text_result["category"]
         source = "text"
-    
+        confidence = text_result["confidence"]
+
+    # Score priority using description stored in request
+    # (we'll pass description through)
     return {
-        "category": final,
-        "confidence": max(text_result["confidence"], image_result["confidence"]),
+        "category": final_category,
+        "confidence": confidence,
         "text_prediction": text_result,
         "image_prediction": image_result,
         "source": source,
     }
-
 
 @app.get("/health")
 def health():
@@ -97,10 +102,18 @@ async def predict(
     image: Optional[UploadFile] = File(None),
 ):
     text_result = predict_text(text)
-    
+
     image_result = None
     if image and image.filename:
         image_bytes = await image.read()
         image_result = predict_image(image_bytes)
-    
-    return combine(text_result, image_result)
+
+    result = combine(text_result, image_result)
+
+    # Add priority scoring
+    priority_result = score_priority(result["category"], text)
+    result["priority"] = priority_result["priority"]
+    result["priority_score"] = priority_result["score"]
+    result["matched_keyword"] = priority_result["matched_keyword"]
+
+    return result
