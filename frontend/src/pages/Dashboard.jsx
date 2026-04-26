@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-// ADD these two imports at the top
-import { useNavigate } from 'react-router-dom'  // ADD this
 
 const STATUS_OPTIONS = ['pending', 'assigned', 'in_progress', 'resolved', 'rejected']
 
@@ -45,25 +43,18 @@ export default function Dashboard() {
   const [actionLoading, setActionLoading] = useState(false)
   const [updateForm, setUpdateForm] = useState({ status: '', note: '', department: '' })
   const [successMsg, setSuccessMsg] = useState('')
-  useEffect(() => { fetchIssues() }, [filters])
-  const stats = {
-    total:       issues.length,
-    pending:     issues.filter(i => i.status === 'pending').length,
-    in_progress: issues.filter(i => i.status === 'in_progress').length,
-    resolved:    issues.filter(i => i.status === 'resolved').length,
-  }
-const navigate = useNavigate()
 
-// ADD this block — redirect non-citizens away
-useEffect(() => {
-  if (profile && profile.role && ['admin', 'ngo', 'inspector'].includes(profile.role)) {
-    navigate('/authority-dashboard')  // or wherever your authority page is
-  }
-}, [profile])
-
+  // Redirect non-authority roles away
   useEffect(() => {
-    if (user) fetchIssues()
-  }, [user])
+    if (profile && profile.role && !['admin', 'ngo', 'inspector'].includes(profile.role)) {
+      navigate('/')
+    }
+  }, [profile])
+
+  // Fetch issues whenever filters change
+  useEffect(() => {
+    if (profile) fetchIssues()
+  }, [filters, profile])
 
   async function fetchIssues() {
     setLoading(true)
@@ -86,7 +77,6 @@ useEffect(() => {
     const all = data || []
     setIssues(all)
 
-    // Compute stats
     setStats({
       total:       all.length,
       pending:     all.filter(i => i.status === 'pending').length,
@@ -110,7 +100,6 @@ useEffect(() => {
       .eq('id', selectedIssue.id)
 
     if (!error) {
-      // Add audit log
       await supabase.from('audit_logs').insert({
         issue_id:   selectedIssue.id,
         changed_by: profile.id,
@@ -119,17 +108,15 @@ useEffect(() => {
         note:       updateForm.note || null,
       })
 
-      // Add comment if note provided
       if (updateForm.note) {
         await supabase.from('comments').insert({
-          issue_id:   selectedIssue.id,
-          user_id:    profile.id,
-          content:    updateForm.note,
+          issue_id:    selectedIssue.id,
+          user_id:     profile.id,
+          content:     updateForm.note,
           is_official: true,
         })
       }
 
-      // Notify the reporter
       await supabase.from('notifications').insert({
         user_id:  selectedIssue.reported_by,
         issue_id: selectedIssue.id,
@@ -180,7 +167,6 @@ useEffect(() => {
     setActionLoading(false)
   }
 
-  // Filter by search
   const filtered = issues.filter(issue => {
     if (!search) return true
     const q = search.toLowerCase()
@@ -269,7 +255,6 @@ useEffect(() => {
             }}
           />
 
-          {/* Status filter */}
           <select
             value={filters.status}
             onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
@@ -286,7 +271,6 @@ useEffect(() => {
             ))}
           </select>
 
-          {/* Priority filter */}
           <select
             value={filters.priority}
             onChange={e => setFilters(f => ({ ...f, priority: e.target.value }))}
@@ -463,7 +447,7 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* ── Issue Management Modal ── */}
+      {/* Issue Management Modal */}
       {selectedIssue && (
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(10,15,46,0.6)',
@@ -545,7 +529,7 @@ useEffect(() => {
                 </p>
               </div>
 
-              {/* Issue image if any */}
+              {/* Issue image */}
               {selectedIssue.issue_images?.[0]?.image_url && (
                 <img
                   src={selectedIssue.issue_images[0].image_url}
@@ -554,7 +538,6 @@ useEffect(() => {
                 />
               )}
 
-              {/* Divider */}
               <div style={{ borderTop: '1px solid #f1f5f9' }} />
 
               {/* Assign to department */}
