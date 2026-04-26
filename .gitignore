@@ -73,3 +73,12 @@ Desktop.ini
 # ===========================
 supabase/.branches
 supabase/.temp
+
+ml/venv/
+ml/__pycache__/
+ml/**/__pycache__/
+ml/data/raw/          # images are large, don't commit
+ml/data/processed/    # auto-generated
+ml/models/*.pt        # model weights are large — use Git LFS or share separately
+*.pyc
+.env

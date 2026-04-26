@@ -6,3 +6,31 @@ torch
 Pillow
 python-multipart
 joblib
+
+# Web framework
+fastapi==0.111.0
+uvicorn==0.29.0
+python-multipart==0.0.9
+
+# ML — image
+torch==2.3.0
+torchvision==0.18.0
+Pillow==10.3.0
+timm==0.9.16
+
+# ML — tabular / text
+scikit-learn==1.4.2
+xgboost==2.0.3
+numpy==1.26.4
+pandas==2.2.2
+
+# Geo clustering
+scipy==1.13.0
+
+# Supabase connection (for edge function calls)
+supabase==2.4.3
+httpx==0.27.0
+
+# Utils
+python-dotenv==1.0.1
+joblib==1.4.2

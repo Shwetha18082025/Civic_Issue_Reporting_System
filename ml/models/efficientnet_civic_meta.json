@@ -1,0 +1,21 @@
+{
+  "class_to_idx": {
+    "garbage": 0,
+    "road_damage": 1,
+    "water_leak": 2
+  },
+  "idx_to_class": {
+    "0": "garbage",
+    "1": "road_damage",
+    "2": "water_leak"
+  },
+  "best_test_accuracy": 0.988,
+  "model": "EfficientNetB0-finetuned",
+  "num_classes": 3,
+  "classes": [
+    "garbage",
+    "road_damage",
+    "water_leak"
+  ],
+  "input_size": 224
+}
