@@ -86,9 +86,9 @@ export default function Home() {
               </>
             ) : (
               <>
-                <Link to="/register" className="btn-primary" style={{ fontSize: '1rem' }}>
-                  Get Started Free →
-                </Link>
+                        <Link to="/login" className="btn-primary" style={{ fontSize: '1rem' }}>
+          Get Started Free →
+        </Link>
                 <Link to="/login" className="btn-outline" style={{ fontSize: '1rem' }}>
                   Sign In
                 </Link>
@@ -198,9 +198,9 @@ export default function Home() {
             <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '1.05rem', marginBottom: '2.5rem', fontWeight: 300 }}>
               Join citizens already using CivicReport to hold local authorities accountable.
             </p>
-            <Link to="/register" className="btn-primary" style={{ fontSize: '1rem' }}>
-              Create Free Account →
-            </Link>
+            <Link to="/login" className="btn-primary" style={{ fontSize: '1rem' }}>
+  Create Free Account →
+</Link>
           </div>
         </section>
       )}

@@ -44,7 +44,17 @@ export default function Dashboard() {
   const [updateForm, setUpdateForm] = useState({ status: '', note: '', department: '' })
   const [successMsg, setSuccessMsg] = useState('')
 
-  useEffect(() => { fetchIssues() }, [filters])
+  // Redirect non-authority roles away
+  useEffect(() => {
+    if (profile && profile.role && !['admin', 'ngo', 'inspector'].includes(profile.role)) {
+      navigate('/')
+    }
+  }, [profile])
+
+  // Fetch issues whenever filters change
+  useEffect(() => {
+    if (profile) fetchIssues()
+  }, [filters, profile])
 
   async function fetchIssues() {
     setLoading(true)
@@ -67,7 +77,6 @@ export default function Dashboard() {
     const all = data || []
     setIssues(all)
 
-    // Compute stats
     setStats({
       total:       all.length,
       pending:     all.filter(i => i.status === 'pending').length,
@@ -91,7 +100,6 @@ export default function Dashboard() {
       .eq('id', selectedIssue.id)
 
     if (!error) {
-      // Add audit log
       await supabase.from('audit_logs').insert({
         issue_id:   selectedIssue.id,
         changed_by: profile.id,
@@ -100,17 +108,15 @@ export default function Dashboard() {
         note:       updateForm.note || null,
       })
 
-      // Add comment if note provided
       if (updateForm.note) {
         await supabase.from('comments').insert({
-          issue_id:   selectedIssue.id,
-          user_id:    profile.id,
-          content:    updateForm.note,
+          issue_id:    selectedIssue.id,
+          user_id:     profile.id,
+          content:     updateForm.note,
           is_official: true,
         })
       }
 
-      // Notify the reporter
       await supabase.from('notifications').insert({
         user_id:  selectedIssue.reported_by,
         issue_id: selectedIssue.id,
@@ -161,7 +167,6 @@ export default function Dashboard() {
     setActionLoading(false)
   }
 
-  // Filter by search
   const filtered = issues.filter(issue => {
     if (!search) return true
     const q = search.toLowerCase()
@@ -250,7 +255,6 @@ export default function Dashboard() {
             }}
           />
 
-          {/* Status filter */}
           <select
             value={filters.status}
             onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
@@ -267,7 +271,6 @@ export default function Dashboard() {
             ))}
           </select>
 
-          {/* Priority filter */}
           <select
             value={filters.priority}
             onChange={e => setFilters(f => ({ ...f, priority: e.target.value }))}
@@ -444,7 +447,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Issue Management Modal ── */}
+      {/* Issue Management Modal */}
       {selectedIssue && (
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(10,15,46,0.6)',
@@ -526,7 +529,7 @@ export default function Dashboard() {
                 </p>
               </div>
 
-              {/* Issue image if any */}
+              {/* Issue image */}
               {selectedIssue.issue_images?.[0]?.image_url && (
                 <img
                   src={selectedIssue.issue_images[0].image_url}
@@ -535,7 +538,6 @@ export default function Dashboard() {
                 />
               )}
 
-              {/* Divider */}
               <div style={{ borderTop: '1px solid #f1f5f9' }} />
 
               {/* Assign to department */}
