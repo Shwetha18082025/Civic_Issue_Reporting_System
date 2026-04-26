@@ -3,94 +3,149 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 
-const statusColors = {
-  pending:     { bg: '#fef3c7', color: '#92400e', dot: '#f59e0b' },
-  in_progress: { bg: '#dbeafe', color: '#1e40af', dot: '#3b82f6' },
-  resolved:    { bg: '#dcfce7', color: '#166534', dot: '#22c55e' },
-  rejected:    { bg: '#fee2e2', color: '#991b1b', dot: '#ef4444' },
+const STATUS_STYLE = {
+  pending:     { bg: '#fef3c7', color: '#92400e', label: 'Pending' },
+  assigned:    { bg: '#dbeafe', color: '#1e40af', label: 'Assigned' },
+  in_progress: { bg: '#e0e7ff', color: '#3730a3', label: 'In Progress' },
+  resolved:    { bg: '#dcfce7', color: '#166534', label: 'Resolved' },
+  rejected:    { bg: '#fee2e2', color: '#991b1b', label: 'Rejected' },
 }
 
-const priorityColors = {
-  low:      { bg: '#f1f5f9', color: '#475569' },
-  medium:   { bg: '#fef3c7', color: '#92400e' },
-  high:     { bg: '#ffedd5', color: '#9a3412' },
-  critical: { bg: '#fee2e2', color: '#991b1b' },
+const PRIORITY_STYLE = {
+  low:      { color: '#16a34a', bg: '#dcfce7' },
+  medium:   { color: '#d97706', bg: '#fef3c7' },
+  high:     { color: '#dc2626', bg: '#fee2e2' },
+  critical: { color: '#7c3aed', bg: '#ede9fe' },
 }
 
 export default function IssueDetail() {
   const { id } = useParams()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const navigate = useNavigate()
 
-  const [issue, setIssue]       = useState(null)
-  const [images, setImages]     = useState([])
-  const [category, setCategory] = useState(null)
-  const [reporter, setReporter] = useState(null)
-  const [loading, setLoading]   = useState(true)
-  const [activeImg, setActiveImg] = useState(0)
-  const [upvoted, setUpvoted]   = useState(false)
+  const [issue, setIssue] = useState(null)
+  const [images, setImages] = useState([])
+  const [comments, setComments] = useState([])
+  const [hasUpvoted, setHasUpvoted] = useState(false)
   const [upvoteCount, setUpvoteCount] = useState(0)
+  const [upvoteLoading, setUpvoteLoading] = useState(false)
+  const [newComment, setNewComment] = useState('')
+  const [commentLoading, setCommentLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [activeImage, setActiveImage] = useState(0)
 
   useEffect(() => {
-    if (id) fetchIssue()
-  }, [id])
+    fetchIssue()
+    fetchComments()
+    if (user) checkUpvote()
+  }, [id, user])
 
   async function fetchIssue() {
-    setLoading(true)
-    try {
-      const { data: issueData, error } = await supabase
-        .from('issues')
-        .select('*')
-        .eq('id', id)
-        .single()
+    const { data } = await supabase
+      .from('issues')
+      .select(`
+        *,
+        categories(name, icon),
+        issue_images(image_url),
+        reporter:profiles!issues_reported_by_fkey(full_name)
+      `)
+      .eq('id', id)
+      .single()
 
-      if (error || !issueData) { navigate('/my-issues'); return }
-      setIssue(issueData)
-      setUpvoteCount(issueData.upvotes || 0)
-
-      // Fetch related data in parallel
-      const [imagesRes, categoryRes, reporterRes] = await Promise.all([
-        supabase.from('issue_images').select('*').eq('issue_id', id),
-        issueData.category_id
-          ? supabase.from('categories').select('*').eq('id', issueData.category_id).single()
-          : Promise.resolve({ data: null }),
-        issueData.reported_by
-          ? supabase.from('profiles').select('full_name, email').eq('id', issueData.reported_by).single()
-          : Promise.resolve({ data: null }),
-      ])
-
-      if (imagesRes.data) setImages(imagesRes.data)
-      if (categoryRes.data) setCategory(categoryRes.data)
-      if (reporterRes.data) setReporter(reporterRes.data)
-    } catch (e) {
-      console.error(e)
+    if (data) {
+      setIssue(data)
+      setImages(data.issue_images || [])
+      setUpvoteCount(data.upvotes || 0)
     }
     setLoading(false)
   }
 
+  async function fetchComments() {
+    const { data } = await supabase
+      .from('comments')
+      .select(`*, profiles(full_name, role)`)
+      .eq('issue_id', id)
+      .order('created_at', { ascending: true })
+    setComments(data || [])
+  }
+
+  async function checkUpvote() {
+    if (!user) return
+    const { data } = await supabase
+      .from('upvotes')
+      .select('id')
+      .eq('issue_id', id)
+      .eq('user_id', user.id)
+      .single()
+    setHasUpvoted(!!data)
+  }
+
   async function handleUpvote() {
-    if (!user || upvoted) return
-    setUpvoted(true)
-    setUpvoteCount(c => c + 1)
-    await supabase.from('issues').update({ upvotes: upvoteCount + 1 }).eq('id', id)
+    if (!user) { navigate('/login'); return }
+    setUpvoteLoading(true)
+
+    if (hasUpvoted) {
+      // Remove upvote
+      await supabase.from('upvotes')
+        .delete()
+        .eq('issue_id', id)
+        .eq('user_id', user.id)
+
+      await supabase.from('issues')
+        .update({ upvotes: upvoteCount - 1 })
+        .eq('id', id)
+
+      setUpvoteCount(c => c - 1)
+      setHasUpvoted(false)
+    } else {
+      // Add upvote
+      await supabase.from('upvotes')
+        .insert({ issue_id: id, user_id: user.id })
+
+      await supabase.from('issues')
+        .update({ upvotes: upvoteCount + 1 })
+        .eq('id', id)
+
+      setUpvoteCount(c => c + 1)
+      setHasUpvoted(true)
+    }
+    setUpvoteLoading(false)
+  }
+
+  async function handleComment() {
+    if (!newComment.trim() || !user) return
+    setCommentLoading(true)
+
+    await supabase.from('comments').insert({
+      issue_id:    id,
+      user_id:     user.id,
+      content:     newComment.trim(),
+      is_official: profile?.role !== 'citizen',
+    })
+
+    setNewComment('')
+    fetchComments()
+    setCommentLoading(false)
   }
 
   if (loading) return (
-    <div style={{ paddingTop: '68px', minHeight: '100vh', background: '#f8f9fc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ paddingTop: '68px', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <p style={{ color: '#64748b' }}>Loading issue...</p>
+    </div>
+  )
+
+  if (!issue) return (
+    <div style={{ paddingTop: '68px', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⏳</div>
-        <p style={{ color: '#64748b' }}>Loading issue...</p>
+        <div style={{ fontSize: '3rem' }}>😕</div>
+        <p style={{ color: '#64748b', marginTop: '1rem' }}>Issue not found.</p>
+        <Link to="/" style={{ color: '#f59e0b', fontWeight: 600 }}>← Go Home</Link>
       </div>
     </div>
   )
 
-  if (!issue) return null
-
-  const status   = statusColors[issue.status]  || statusColors.pending
-  const priority = priorityColors[issue.priority] || priorityColors.medium
-  const isOwner  = user?.id === issue.reported_by
-
-  const allImages = images.map(i => i.image_url)
+  const status   = STATUS_STYLE[issue.status]   || STATUS_STYLE.pending
+  const priority = PRIORITY_STYLE[issue.priority] || PRIORITY_STYLE.medium
 
   return (
     <div style={{ paddingTop: '68px', minHeight: '100vh', background: '#f8f9fc' }}>
@@ -98,79 +153,87 @@ export default function IssueDetail() {
       {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #0a0f2e, #111a45)', padding: '2.5rem 1.5rem 2rem' }}>
         <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-          <Link to="/my-issues" style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', marginBottom: '1.25rem' }}>
+          <Link to="/my-issues" style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', marginBottom: '1rem' }}>
             ← Back to My Issues
           </Link>
-
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
             <div>
               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
-                <span style={{ background: status.bg, color: status.color, padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.78rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: status.dot, display: 'inline-block' }} />
-                  {issue.status?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                <span style={{ background: status.bg, color: status.color, fontSize: '0.75rem', fontWeight: 600, padding: '0.25rem 0.75rem', borderRadius: '9999px' }}>
+                  {status.label}
                 </span>
-                <span style={{ background: priority.bg, color: priority.color, padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.78rem', fontWeight: 600 }}>
-                  {issue.priority?.toUpperCase()} Priority
+                <span style={{ background: priority.bg, color: priority.color, fontSize: '0.75rem', fontWeight: 600, padding: '0.25rem 0.75rem', borderRadius: '9999px' }}>
+                  {issue.priority?.toUpperCase()} PRIORITY
                 </span>
-                {category && (
-                  <span style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.78rem' }}>
-                    {category.icon} {category.name}
+                {issue.ml_category && (
+                  <span style={{ background: 'rgba(124,58,237,0.15)', color: '#c4b5fd', fontSize: '0.75rem', fontWeight: 600, padding: '0.25rem 0.75rem', borderRadius: '9999px' }}>
+                    🤖 AI: {issue.ml_category.replace('_', ' ')}
                   </span>
                 )}
               </div>
-              <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: '1.75rem', fontWeight: 700, color: 'white', marginBottom: '0.4rem', lineHeight: 1.2 }}>
+              <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: '1.75rem', fontWeight: 700, color: 'white', marginBottom: '0.5rem' }}>
                 {issue.title}
               </h1>
-              <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.85rem' }}>
-                📍 {issue.address || issue.city || 'Location not specified'} · {new Date(issue.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.875rem' }}>
+                {issue.categories?.icon} {issue.categories?.name}
+                {' · '}Reported by {issue.reporter?.full_name || 'Anonymous'}
+                {' · '}{new Date(issue.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
               </p>
             </div>
 
-            {/* Upvote */}
+            {/* Upvote button */}
             <button
               onClick={handleUpvote}
-              disabled={!user || upvoted}
+              disabled={upvoteLoading}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
-                background: upvoted ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.08)',
-                border: upvoted ? '1.5px solid rgba(245,158,11,0.5)' : '1.5px solid rgba(255,255,255,0.15)',
-                borderRadius: '12px', padding: '0.75rem 1.25rem',
-                cursor: user && !upvoted ? 'pointer' : 'default',
-                transition: 'all 0.2s', minWidth: '72px',
+                gap: '0.25rem', padding: '0.75rem 1.25rem',
+                background: hasUpvoted ? '#f59e0b' : 'rgba(255,255,255,0.08)',
+                border: hasUpvoted ? '2px solid #f59e0b' : '2px solid rgba(255,255,255,0.2)',
+                borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s',
+                minWidth: '70px',
               }}
             >
-              <span style={{ fontSize: '1.4rem' }}>👆</span>
-              <span style={{ color: upvoted ? '#f59e0b' : 'white', fontWeight: 700, fontSize: '1.1rem' }}>{upvoteCount}</span>
-              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem' }}>upvotes</span>
+              <span style={{ fontSize: '1.5rem' }}>{hasUpvoted ? '👍' : '👆'}</span>
+              <span style={{ color: hasUpvoted ? '#0a0f2e' : 'white', fontWeight: 700, fontSize: '1.1rem' }}>
+                {upvoteCount}
+              </span>
+              <span style={{ color: hasUpvoted ? '#0a0f2e' : 'rgba(255,255,255,0.6)', fontSize: '0.7rem', fontWeight: 500 }}>
+                {hasUpvoted ? 'Upvoted' : 'Upvote'}
+              </span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Body */}
+      {/* Content */}
       <div style={{ maxWidth: '900px', margin: '2rem auto', padding: '0 1.5rem 4rem', display: 'grid', gridTemplateColumns: '1fr 320px', gap: '1.5rem' }}>
 
         {/* Left column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
           {/* Images */}
-          {allImages.length > 0 && (
-            <div style={{ background: 'white', borderRadius: '16px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+          {images.length > 0 && (
+            <div style={{ background: 'white', borderRadius: '16px', padding: '1.25rem', border: '1px solid #e2e8f0' }}>
+              <h2 style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>
+                Photos
+              </h2>
               <img
-                src={allImages[activeImg]}
+                src={images[activeImage]?.image_url}
                 alt="Issue"
-                style={{ width: '100%', height: '320px', objectFit: 'cover', display: 'block' }}
+                style={{ width: '100%', borderRadius: '12px', maxHeight: '320px', objectFit: 'cover' }}
               />
-              {allImages.length > 1 && (
-                <div style={{ display: 'flex', gap: '0.5rem', padding: '0.75rem' }}>
-                  {allImages.map((src, i) => (
+              {images.length > 1 && (
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+                  {images.map((img, i) => (
                     <img
-                      key={i} src={src} alt={`thumb-${i}`}
-                      onClick={() => setActiveImg(i)}
+                      key={i} src={img.image_url} alt=""
+                      onClick={() => setActiveImage(i)}
                       style={{
-                        width: '64px', height: '64px', objectFit: 'cover', borderRadius: '8px',
-                        cursor: 'pointer', border: i === activeImg ? '2.5px solid #f59e0b' : '2px solid #e2e8f0',
-                        transition: 'border-color 0.2s',
+                        width: '60px', height: '60px', objectFit: 'cover',
+                        borderRadius: '8px', cursor: 'pointer',
+                        border: activeImage === i ? '2px solid #f59e0b' : '2px solid transparent',
+                        opacity: activeImage === i ? 1 : 0.6,
                       }}
                     />
                   ))}
@@ -181,111 +244,185 @@ export default function IssueDetail() {
 
           {/* Description */}
           <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', border: '1px solid #e2e8f0' }}>
-            <h3 style={{ fontSize: '0.8rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.75rem' }}>Description</h3>
-            <p style={{ color: '#334155', lineHeight: 1.75, fontSize: '0.95rem' }}>{issue.description}</p>
+            <h2 style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>
+              Description
+            </h2>
+            <p style={{ color: '#334155', lineHeight: 1.7, fontSize: '0.95rem' }}>{issue.description}</p>
           </div>
 
-          {/* ML Analysis */}
-          {issue.ml_category && (
-            <div style={{ background: 'linear-gradient(135deg, #0a0f2e08, #111a4514)', borderRadius: '16px', padding: '1.5rem', border: '1px solid #e2e8f0' }}>
-              <h3 style={{ fontSize: '0.8rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '1rem' }}>🤖 AI Analysis</h3>
-              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: '140px' }}>
-                  <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Detected Category</p>
-                  <p style={{ fontWeight: 600, color: '#0a0f2e', textTransform: 'capitalize' }}>{issue.ml_category.replace('_', ' ')}</p>
-                </div>
-                <div style={{ flex: 1, minWidth: '140px' }}>
-                  <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Confidence</p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <div style={{ flex: 1, height: '6px', background: '#e2e8f0', borderRadius: '9999px', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${Math.round((issue.ml_confidence || 0) * 100)}%`, background: '#f59e0b', borderRadius: '9999px' }} />
+          {/* Comments */}
+          <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', border: '1px solid #e2e8f0' }}>
+            <h2 style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1.25rem' }}>
+              Comments ({comments.length})
+            </h2>
+
+            {comments.length === 0 ? (
+              <p style={{ color: '#94a3b8', fontSize: '0.875rem', textAlign: 'center', padding: '1rem' }}>
+                No comments yet. Be the first to comment!
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+                {comments.map(comment => (
+                  <div key={comment.id} style={{
+                    background: comment.is_official ? 'linear-gradient(135deg, #eff6ff, #dbeafe)' : '#f8f9fc',
+                    border: comment.is_official ? '1px solid #bfdbfe' : '1px solid #e2e8f0',
+                    borderRadius: '12px', padding: '1rem',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                      <div style={{
+                        width: '28px', height: '28px', borderRadius: '50%',
+                        background: comment.is_official ? '#1e40af' : '#0a0f2e',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: 'white', fontSize: '0.75rem', fontWeight: 700, flexShrink: 0,
+                      }}>
+                        {comment.profiles?.full_name?.[0]?.toUpperCase() || 'U'}
+                      </div>
+                      <span style={{ fontWeight: 600, fontSize: '0.85rem', color: '#0a0f2e' }}>
+                        {comment.profiles?.full_name || 'User'}
+                      </span>
+                      {comment.is_official && (
+                        <span style={{ background: '#1e40af', color: 'white', fontSize: '0.65rem', fontWeight: 700, padding: '0.15rem 0.5rem', borderRadius: '9999px' }}>
+                          OFFICIAL
+                        </span>
+                      )}
+                      <span style={{ color: '#94a3b8', fontSize: '0.75rem', marginLeft: 'auto' }}>
+                        {new Date(comment.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                      </span>
                     </div>
-                    <span style={{ fontWeight: 600, color: '#0a0f2e', fontSize: '0.9rem' }}>{Math.round((issue.ml_confidence || 0) * 100)}%</span>
+                    <p style={{ color: '#334155', fontSize: '0.875rem', lineHeight: 1.6, margin: 0 }}>
+                      {comment.content}
+                    </p>
                   </div>
-                </div>
+                ))}
               </div>
-            </div>
-          )}
+            )}
+
+            {/* Add comment */}
+            {user ? (
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <textarea
+                  value={newComment}
+                  onChange={e => setNewComment(e.target.value)}
+                  placeholder="Add a comment..."
+                  style={{
+                    flex: 1, border: '1.5px solid #e2e8f0', borderRadius: '10px',
+                    padding: '0.75rem 1rem', fontSize: '0.875rem', resize: 'none',
+                    minHeight: '60px', outline: 'none', fontFamily: 'DM Sans, sans-serif',
+                  }}
+                  onFocus={e => e.target.style.borderColor = '#f59e0b'}
+                  onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                />
+                <button
+                  onClick={handleComment}
+                  disabled={!newComment.trim() || commentLoading}
+                  style={{
+                    background: newComment.trim() ? '#f59e0b' : '#e2e8f0',
+                    color: newComment.trim() ? '#0a0f2e' : '#94a3b8',
+                    border: 'none', borderRadius: '10px',
+                    padding: '0 1.25rem', fontWeight: 700, cursor: 'pointer',
+                    fontSize: '0.875rem', alignSelf: 'flex-end', height: '42px',
+                  }}
+                >
+                  {commentLoading ? '...' : 'Post'}
+                </button>
+              </div>
+            ) : (
+              <p style={{ color: '#94a3b8', fontSize: '0.875rem', textAlign: 'center' }}>
+                <Link to="/login" style={{ color: '#f59e0b', fontWeight: 600 }}>Sign in</Link> to comment
+              </p>
+            )}
+          </div>
         </div>
 
-        {/* Right column — meta */}
+        {/* Right sidebar */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
-          {/* Status timeline */}
-          <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', border: '1px solid #e2e8f0' }}>
-            <h3 style={{ fontSize: '0.8rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '1.25rem' }}>Status Timeline</h3>
-            {[
-              { label: 'Reported', done: true,  date: issue.created_at },
-              { label: 'Under Review', done: ['in_progress','resolved'].includes(issue.status), date: null },
-              { label: 'In Progress', done: ['in_progress','resolved'].includes(issue.status), date: null },
-              { label: 'Resolved', done: issue.status === 'resolved', date: issue.resolved_at },
-            ].map((step, i) => (
-              <div key={step.label} style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', marginBottom: i < 3 ? '1rem' : 0 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div style={{
-                    width: '20px', height: '20px', borderRadius: '50%',
-                    background: step.done ? '#f59e0b' : '#e2e8f0',
-                    border: step.done ? '2px solid #f59e0b' : '2px solid #e2e8f0',
-                    flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '0.6rem', color: step.done ? '#0a0f2e' : 'transparent',
-                    fontWeight: 700,
-                  }}>✓</div>
-                  {i < 3 && <div style={{ width: '2px', height: '24px', background: step.done ? '#fcd34d' : '#e2e8f0', marginTop: '2px' }} />}
-                </div>
-                <div style={{ paddingTop: '1px' }}>
-                  <p style={{ fontSize: '0.875rem', fontWeight: 600, color: step.done ? '#0a0f2e' : '#94a3b8' }}>{step.label}</p>
-                  {step.date && <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{new Date(step.date).toLocaleDateString('en-IN')}</p>}
-                </div>
-              </div>
-            ))}
-          </div>
-
           {/* Details card */}
-          <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', border: '1px solid #e2e8f0' }}>
-            <h3 style={{ fontSize: '0.8rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '1rem' }}>Details</h3>
+          <div style={{ background: 'white', borderRadius: '16px', padding: '1.25rem', border: '1px solid #e2e8f0' }}>
+            <h2 style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>
+              Details
+            </h2>
             {[
-              { label: 'Reported by', value: reporter?.full_name || 'Anonymous' },
-              { label: 'City', value: issue.city || '—' },
-              { label: 'Ward / Area', value: issue.ward || '—' },
-              { label: 'Coordinates', value: issue.latitude ? `${Number(issue.latitude).toFixed(4)}, ${Number(issue.longitude).toFixed(4)}` : '—' },
-              { label: 'Issue ID', value: issue.id?.slice(0, 8) + '...' },
-            ].map(row => (
-              <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid #f1f5f9' }}>
-                <span style={{ fontSize: '0.82rem', color: '#94a3b8' }}>{row.label}</span>
-                <span style={{ fontSize: '0.82rem', color: '#334155', fontWeight: 500, textAlign: 'right', maxWidth: '160px' }}>{row.value}</span>
+              { label: 'Reported by', value: issue.reporter?.full_name || 'Anonymous' },
+              { label: 'City',        value: issue.city  || '—' },
+              { label: 'Ward / Area', value: issue.ward  || '—' },
+              { label: 'Coordinates', value: issue.latitude ? `${issue.latitude.toFixed(4)}, ${issue.longitude.toFixed(4)}` : '—' },
+              { label: 'Issue ID',    value: issue.id?.slice(0, 8) + '...' },
+            ].map(({ label, value }) => (
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #f1f5f9' }}>
+                <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 500 }}>{label}</span>
+                <span style={{ fontSize: '0.8rem', color: '#0a0f2e', fontWeight: 600, textAlign: 'right', maxWidth: '55%' }}>{value}</span>
               </div>
             ))}
+            {issue.latitude && (
+              
+                href={`https://maps.google.com/?q=${issue.latitude},${issue.longitude}`}
+                target="_blank" rel="noreferrer"
+                style={{
+                  display: 'block', marginTop: '1rem', textAlign: 'center',
+                  background: '#f8f9fc', border: '1px solid #e2e8f0',
+                  borderRadius: '8px', padding: '0.6rem',
+                  color: '#0a0f2e', textDecoration: 'none',
+                  fontSize: '0.82rem', fontWeight: 600,
+                }}
+              >
+                🗺️ View on Google Maps
+              </a>
+            )}
           </div>
 
-          {/* Map link */}
-          {issue.latitude && issue.longitude && (
-            <a
-              href={`https://maps.google.com/?q=${issue.latitude},${issue.longitude}`}
-              target="_blank" rel="noreferrer"
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
-                background: '#0a0f2e', color: 'white', borderRadius: '10px',
-                padding: '0.75rem', fontSize: '0.875rem', fontWeight: 600,
-                textDecoration: 'none', transition: 'opacity 0.2s',
-              }}
-            >
-              🗺️ View on Google Maps
-            </a>
+          {/* AI Analysis card */}
+          {issue.ml_category && (
+            <div style={{ background: 'linear-gradient(135deg, #faf5ff, #ede9fe)', borderRadius: '16px', padding: '1.25rem', border: '1px solid #ddd6fe' }}>
+              <h2 style={{ fontSize: '0.85rem', fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>
+                🤖 AI Analysis
+              </h2>
+              {[
+                { label: 'Detected Category', value: issue.ml_category.replace('_', ' ') },
+                { label: 'Confidence',        value: issue.ml_confidence ? `${(issue.ml_confidence * 100).toFixed(0)}%` : '—' },
+              ].map(({ label, value }) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e9d5ff' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#7c3aed', fontWeight: 500 }}>{label}</span>
+                  <span style={{ fontSize: '0.8rem', color: '#4c1d95', fontWeight: 700 }}>{value}</span>
+                </div>
+              ))}
+            </div>
           )}
 
-          {isOwner && (
-            <Link
-              to="/report"
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
-                background: 'white', color: '#475569', border: '1.5px solid #e2e8f0',
-                borderRadius: '10px', padding: '0.75rem', fontSize: '0.875rem',
-                fontWeight: 600, textDecoration: 'none',
-              }}
-            >
-              + Report Another Issue
-            </Link>
-          )}
+          {/* Status timeline */}
+          <div style={{ background: 'white', borderRadius: '16px', padding: '1.25rem', border: '1px solid #e2e8f0' }}>
+            <h2 style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>
+              Status Timeline
+            </h2>
+            {['pending', 'assigned', 'in_progress', 'resolved'].map((s, i) => {
+              const statuses  = ['pending', 'assigned', 'in_progress', 'resolved']
+              const currentIdx = statuses.indexOf(issue.status)
+              const isDone     = i <= currentIdx
+              const isCurrent  = s === issue.status
+              return (
+                <div key={s} style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', marginBottom: i < 3 ? '0.75rem' : 0 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div style={{
+                      width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0,
+                      background: isDone ? '#f59e0b' : '#e2e8f0',
+                      border: isCurrent ? '3px solid #f59e0b' : '2px solid transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '0.6rem', color: isDone ? '#0a0f2e' : '#94a3b8', fontWeight: 700,
+                    }}>
+                      {isDone ? '✓' : ''}
+                    </div>
+                    {i < 3 && <div style={{ width: '2px', height: '20px', background: isDone && i < currentIdx ? '#f59e0b' : '#e2e8f0' }} />}
+                  </div>
+                  <div style={{ paddingTop: '2px' }}>
+                    <p style={{ fontSize: '0.8rem', fontWeight: isCurrent ? 700 : 500, color: isCurrent ? '#0a0f2e' : '#94a3b8', margin: 0 }}>
+                      {s === 'in_progress' ? 'In Progress' : s.charAt(0).toUpperCase() + s.slice(1)}
+                    </p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
         </div>
       </div>
     </div>
