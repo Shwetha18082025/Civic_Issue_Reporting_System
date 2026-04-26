@@ -57,12 +57,13 @@ export default function Navbar() {
 
           {/* Desktop Nav */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-            {[
-              { to: '/', label: 'Home' },
-              { to: '/report', label: 'Report Issue' },
-              ...(user ? [{ to: '/my-issues', label: 'My Issues' }] : []),
-              ...(profile?.role !== 'citizen' && user ? [{ to: '/dashboard', label: 'Dashboard' }] : []),
-            ].map(({ to, label }) => (
+{[
+  { to: '/', label: 'Home' },
+  // Only show Report Issue for citizens
+  ...((!user || profile?.role === 'citizen') ? [{ to: '/report', label: 'Report Issue' }] : []),
+  ...(user ? [{ to: '/my-issues', label: 'My Issues' }] : []),
+  ...(profile?.role !== 'citizen' && user ? [{ to: '/dashboard', label: 'Dashboard' }] : []),
+].map(({ to, label }) => (
               <Link
                 key={to}
                 to={to}

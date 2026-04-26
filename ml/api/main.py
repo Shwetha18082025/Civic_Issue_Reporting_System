@@ -113,33 +113,30 @@ def predict_image(image_bytes: bytes) -> dict:
     }
 
 
-def combine(text_result: dict, image_result: Optional[dict], description: str) -> dict:
+def combine(text_result, image_result, description):
     if image_result is None:
         final_category = text_result["category"]
         confidence     = text_result["confidence"]
         source         = "text_only"
-    elif image_result["confidence"] >= 0.80:
-        # Trust image if very confident
+    elif image_result["confidence"] >= 0.80:   # ← must be 0.80
         final_category = image_result["category"]
         confidence     = image_result["confidence"]
         source         = "image"
-    elif image_result["confidence"] >= 0.60 and image_result["category"] == text_result["category"]:
-        # Both agree — boost confidence
+    elif image_result["category"] == text_result["category"]:
         final_category = text_result["category"]
         confidence     = round((text_result["confidence"] + image_result["confidence"]) / 2, 4)
         source         = "combined"
     else:
-        # Default to text
-        final_category = text_result["category"]
+        final_category = text_result["category"]  # ← text wins when disagreement
         confidence     = text_result["confidence"]
         source         = "text"
 
     return {
-        "category":        final_category,
-        "confidence":      confidence,
-        "text_prediction": text_result,
+        "category":         final_category,
+        "confidence":       confidence,
+        "text_prediction":  text_result,
         "image_prediction": image_result,
-        "source":          source,
+        "source":           source,
     }
 
 
