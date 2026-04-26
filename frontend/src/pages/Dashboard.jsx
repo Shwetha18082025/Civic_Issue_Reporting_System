@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+// ADD these two imports at the top
+import { useNavigate } from 'react-router-dom'  // ADD this
 
 const STATUS_OPTIONS = ['pending', 'assigned', 'in_progress', 'resolved', 'rejected']
 
@@ -43,8 +45,25 @@ export default function Dashboard() {
   const [actionLoading, setActionLoading] = useState(false)
   const [updateForm, setUpdateForm] = useState({ status: '', note: '', department: '' })
   const [successMsg, setSuccessMsg] = useState('')
-
   useEffect(() => { fetchIssues() }, [filters])
+  const stats = {
+    total:       issues.length,
+    pending:     issues.filter(i => i.status === 'pending').length,
+    in_progress: issues.filter(i => i.status === 'in_progress').length,
+    resolved:    issues.filter(i => i.status === 'resolved').length,
+  }
+const navigate = useNavigate()
+
+// ADD this block — redirect non-citizens away
+useEffect(() => {
+  if (profile && profile.role && ['admin', 'ngo', 'inspector'].includes(profile.role)) {
+    navigate('/authority-dashboard')  // or wherever your authority page is
+  }
+}, [profile])
+
+  useEffect(() => {
+    if (user) fetchIssues()
+  }, [user])
 
   async function fetchIssues() {
     setLoading(true)

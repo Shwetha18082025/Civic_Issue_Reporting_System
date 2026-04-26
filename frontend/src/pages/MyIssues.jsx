@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useLocation, Link } from 'react-router-dom'
+import { useLocation, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 
@@ -22,12 +22,17 @@ const priorityColors = {
 export default function MyIssues() {
   const { user } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
   const [issues, setIssues] = useState([])
   const [loading, setLoading] = useState(true)
   const successMsg = location.state?.success
 
   useEffect(() => {
-    if (!user) return
+    if (!user) {
+      setLoading(false)
+      navigate('/login')
+      return
+    }
     supabase
       .from('issues')
       .select(`*, categories(name, icon), issue_images(image_url)`)

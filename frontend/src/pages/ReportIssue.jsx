@@ -153,6 +153,11 @@ export default function ReportIssue() {
       return null
     }
   }
+  // ADD this at the very top of handleSubmit(), before setError('')
+if (!user) {
+  navigate('/login')
+  return
+}
 
   // Final submit
   async function handleSubmit() {
