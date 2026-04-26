@@ -465,11 +465,34 @@ export default function AuthorityDashboard() {
             <div style={{ borderBottom: '1px solid #f1f5f9', marginBottom: 16, paddingBottom: 16 }} />
 
             {selectedIssue.ml_category && (
-              <div style={{ fontSize: 13, color: '#64748b', marginBottom: 16, background: '#f0f4ff', borderRadius: 8, padding: '8px 12px' }}>
-                🤖 ML: <strong>{selectedIssue.ml_category}</strong>
-                {selectedIssue.ml_confidence && ` (${Math.round(selectedIssue.ml_confidence * 100)}%)`}
-              </div>
-            )}
+  <div style={{ marginBottom: 16, background: 'linear-gradient(135deg, #f5f3ff, #ede9fe)', borderRadius: 10, padding: '12px 14px', border: '1px solid #ddd6fe' }}>
+    <div style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
+      🤖 AI Analysis
+    </div>
+    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+      <div>
+        <div style={{ fontSize: 11, color: '#7c3aed', marginBottom: 2 }}>Detected Category</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#4c1d95' }}>
+          {selectedIssue.ml_category.replace('_', ' ')}
+        </div>
+      </div>
+      {selectedIssue.ml_confidence && (
+        <div>
+          <div style={{ fontSize: 11, color: '#7c3aed', marginBottom: 2 }}>Confidence</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#4c1d95' }}>
+            {Math.round(selectedIssue.ml_confidence * 100)}%
+          </div>
+        </div>
+      )}
+      <div>
+        <div style={{ fontSize: 11, color: '#7c3aed', marginBottom: 2 }}>Priority</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#4c1d95', textTransform: 'capitalize' }}>
+          {selectedIssue.priority}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
             <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6, display: 'block' }}>Update Status</label>
             <select value={newStatus} onChange={e => setNewStatus(e.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', color: '#1e293b', marginBottom: 16 }}>

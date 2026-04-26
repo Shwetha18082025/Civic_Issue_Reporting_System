@@ -43,20 +43,42 @@ export default function IssueDetail() {
   }, [id, user])
 
   async function fetchIssue() {
-    const { data } = await supabase
-      .from('issues')
-      .select('*, categories(name, icon), issue_images(image_url), reporter:profiles!issues_reported_by_fkey(full_name)')
-      .eq('id', id)
-      .single()
+  // First fetch the issue without the profiles join
+  const { data, error } = await supabase
+    .from('issues')
+    .select(`
+      *,
+      categories(name, icon),
+      issue_images(image_url)
+    `)
+    .eq('id', id)
+    .single()
 
-    if (data) {
-      setIssue(data)
-      setImages(data.issue_images || [])
-      setUpvoteCount(data.upvotes || 0)
-    }
+  if (error) {
+    console.error('Issue fetch error:', error)
     setLoading(false)
+    return
   }
 
+  if (data) {
+    setIssue(data)
+    setImages(data.issue_images || [])
+    setUpvoteCount(data.upvotes || 0)
+
+    // Separately fetch reporter name
+    if (data.reported_by) {
+      const { data: reporterData } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', data.reported_by)
+        .single()
+      if (reporterData) {
+        setIssue(prev => ({ ...prev, reporter: reporterData }))
+      }
+    }
+  }
+  setLoading(false)
+}
   async function fetchComments() {
     const { data } = await supabase
       .from('comments')

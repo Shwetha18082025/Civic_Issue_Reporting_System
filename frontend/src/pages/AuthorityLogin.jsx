@@ -469,10 +469,10 @@ export default function AuthorityLogin() {
         .single();
 
       if (profileErr || !profile) throw new Error("Profile not found.");
-      if (profile.role !== "admin") {
-        await supabase.auth.signOut();
-        throw new Error("Access restricted to administrators only.");
-      }
+      if (!['admin', 'officer'].includes(profile.role)) {
+  setError('Restricted to authority accounts only')
+  return
+}
 
       navigate("/authority/dashboard");
     } catch (err) {
