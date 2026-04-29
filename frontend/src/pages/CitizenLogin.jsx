@@ -9,12 +9,12 @@ const styles = `
     min-height: 100vh;
     display: flex;
     font-family: 'DM Sans', sans-serif;
-    background: #f5f2ee;
+    background: #f8f9fc;
   }
 
   .citizen-left {
     width: 42%;
-    background: #1a2e1a;
+    background: #0a0f2e;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -29,7 +29,7 @@ const styles = `
     top: -80px; right: -80px;
     width: 320px; height: 320px;
     border-radius: 50%;
-    background: #2e4a2e;
+    background: #111a45;
     opacity: 0.5;
   }
 
@@ -39,7 +39,7 @@ const styles = `
     bottom: -60px; left: -60px;
     width: 240px; height: 240px;
     border-radius: 50%;
-    background: #2e4a2e;
+    background: #111a45;
     opacity: 0.4;
   }
 
@@ -50,7 +50,7 @@ const styles = `
   .cl-brand-dot {
     width: 10px; height: 10px;
     border-radius: 50%;
-    background: #7ec87e;
+    background: #f59e0b;
     display: inline-block;
     margin-right: 8px;
   }
@@ -58,7 +58,7 @@ const styles = `
   .cl-brand-name {
     font-size: 15px;
     font-weight: 500;
-    color: #c8ddc8;
+    color: rgba(255,255,255,0.7);
     letter-spacing: 0.05em;
   }
 
@@ -70,14 +70,14 @@ const styles = `
     font-family: 'Playfair Display', serif;
     font-size: 38px;
     font-weight: 500;
-    color: #e8f0e8;
+    color: white;
     line-height: 1.2;
     margin-bottom: 16px;
   }
 
   .cl-hero-sub {
     font-size: 14px;
-    color: #7a9c7a;
+    color: rgba(255,255,255,0.5);
     line-height: 1.7;
     max-width: 260px;
   }
@@ -89,19 +89,19 @@ const styles = `
   }
 
   .cl-stat {
-    border-top: 1px solid #2e4a2e;
+    border-top: 1px solid rgba(255,255,255,0.15);
     padding-top: 12px;
   }
 
   .cl-stat-n {
     font-size: 22px;
     font-weight: 500;
-    color: #7ec87e;
+    color: #f59e0b;
   }
 
   .cl-stat-l {
     font-size: 11px;
-    color: #5a7a5a;
+    color: rgba(255,255,255,0.3);
     margin-top: 2px;
   }
 
@@ -122,7 +122,7 @@ const styles = `
     font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.1em;
-    color: #7ec87e;
+    color: #f59e0b;
     text-transform: uppercase;
     margin-bottom: 8px;
   }
@@ -131,13 +131,13 @@ const styles = `
     font-family: 'Playfair Display', serif;
     font-size: 28px;
     font-weight: 500;
-    color: #1a2e1a;
+    color: #0a0f2e;
     margin-bottom: 6px;
   }
 
   .cl-form-sub {
     font-size: 13px;
-    color: #8a9a8a;
+    color: #94a3b8;
     margin-bottom: 32px;
   }
 
@@ -149,7 +149,7 @@ const styles = `
     display: block;
     font-size: 12px;
     font-weight: 500;
-    color: #4a5c4a;
+    color: #475569;
     margin-bottom: 6px;
     letter-spacing: 0.02em;
   }
@@ -159,18 +159,18 @@ const styles = `
     padding: 11px 14px;
     font-size: 14px;
     font-family: 'DM Sans', sans-serif;
-    border: 1px solid #d5cfc5;
+    border: 1px solid #e2e8f0;
     border-radius: 8px;
     background: #ffffff;
-    color: #1a2e1a;
+    color: #0a0f2e;
     outline: none;
     transition: border-color 0.2s, box-shadow 0.2s;
     box-sizing: border-box;
   }
 
   .cl-input:focus {
-    border-color: #7ec87e;
-    box-shadow: 0 0 0 3px rgba(126,200,126,0.12);
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 3px rgba(245,158,11,0.15);
   }
 
   .cl-input.error {
@@ -191,7 +191,7 @@ const styles = `
 
   .cl-forgot a {
     font-size: 12px;
-    color: #7a9c7a;
+    color: #94a3b8;
     text-decoration: none;
     cursor: pointer;
   }
@@ -201,8 +201,8 @@ const styles = `
   .cl-submit {
     width: 100%;
     padding: 12px;
-    background: #1a2e1a;
-    color: #e8f0e8;
+    background: #0a0f2e;
+    color: white;
     font-family: 'DM Sans', sans-serif;
     font-size: 14px;
     font-weight: 500;
@@ -213,9 +213,9 @@ const styles = `
     letter-spacing: 0.02em;
   }
 
-  .cl-submit:hover { background: #243824; }
+  .cl-submit:hover { background: #111a45; }
   .cl-submit:active { transform: scale(0.99); }
-  .cl-submit:disabled { background: #8a9a8a; cursor: not-allowed; }
+  .cl-submit:disabled { background: #94a3b8; cursor: not-allowed; }
 
   .cl-divider {
     display: flex;
@@ -223,24 +223,24 @@ const styles = `
     gap: 12px;
     margin: 20px 0;
     font-size: 12px;
-    color: #b0b8b0;
+    color: #cbd5e1;
   }
 
   .cl-divider::before, .cl-divider::after {
     content: '';
     flex: 1;
     height: 1px;
-    background: #e0dbd4;
+    background: #e2e8f0;
   }
 
   .cl-switch {
     text-align: center;
     font-size: 13px;
-    color: #8a9a8a;
+    color: #94a3b8;
   }
 
   .cl-switch a {
-    color: #1a2e1a;
+    color: #0a0f2e;
     font-weight: 500;
     text-decoration: none;
     cursor: pointer;
@@ -251,8 +251,8 @@ const styles = `
   .cl-toast {
     position: fixed;
     bottom: 24px; right: 24px;
-    background: #1a2e1a;
-    color: #e8f0e8;
+    background: #0a0f2e;
+    color: white;
     padding: 12px 20px;
     border-radius: 8px;
     font-size: 13px;

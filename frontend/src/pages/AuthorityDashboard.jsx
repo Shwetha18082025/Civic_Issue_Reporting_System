@@ -65,7 +65,7 @@ export default function AuthorityDashboard() {
   const showToast = (msg, type='success') => setToast({ message: msg, type })
 
   useEffect(() => {
-    if (profile && profile.role !== 'admin') navigate('/login')
+    if (profile && profile.role !== 'admin' && profile.role !== 'officer') navigate('/login')
   }, [profile, navigate])
 
   const fetchAll = useCallback(async () => {

@@ -500,8 +500,7 @@ export default function AuthorityLogin() {
       if (userId) {
         const { error: profileErr } = await supabase.from("profiles").insert({
           id: userId,
-          full_name: signupForm.fullName.trim(),
-          email: signupForm.email,
+          full_name: signupForm.fullName.trim(),          
           role: "admin",
         });
         if (profileErr) throw profileErr;
