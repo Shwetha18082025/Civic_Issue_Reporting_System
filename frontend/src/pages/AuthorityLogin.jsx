@@ -177,9 +177,10 @@ body { background: var(--navy); }
   padding: 48px 56px;
   background: var(--navy-card);
   position: relative;
-  overflow: hidden;
+   overflow-y: auto;
 }
 
+/* AFTER */
 .al-right::before {
   content: '';
   position: absolute;
@@ -187,12 +188,14 @@ body { background: var(--navy); }
   width: 500px; height: 500px;
   background: radial-gradient(circle, rgba(99,102,241,0.05) 0%, transparent 60%);
   pointer-events: none;
+  z-index: 0;   /* ✅ explicitly push it below */
 }
 
 .al-form-container {
   width: 100%;
   max-width: 420px;
-  position: relative; z-index: 1;
+  position: relative;
+  z-index: 99;  /* ✅ push form container above everything */
 }
 
 .al-form-title {
@@ -386,15 +389,39 @@ body { background: var(--navy); }
   text-align: center;
   font-size: 13px;
   color: var(--muted);
+  
 }
 
 .al-switch a {
   color: var(--gold-light);
   text-decoration: none;
   font-weight: 500;
+  cursor: pointer;
+  pointer-events: all;  
 }
 
 .al-switch a:hover { text-decoration: underline; }
+
+.al-citizen-btn {
+  background: none;
+  border: none;
+  color: var(--gold-light);
+  font-weight: 500;
+  font-size: 13px;
+  font-family: 'Outfit', sans-serif;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: none;
+  position: relative;
+  z-index: 99;
+  pointer-events: all;
+  transition: color 0.2s;
+}
+
+.al-citizen-btn:hover {
+  color: var(--gold);
+  text-decoration: underline;
+}
 
 /* Password eye */
 .al-eye {
@@ -470,11 +497,11 @@ export default function AuthorityLogin() {
 
       if (profileErr || !profile) throw new Error("Profile not found.");
       if (!['admin', 'officer'].includes(profile.role)) {
-  setError('Restricted to authority accounts only')
-  return
+  await supabase.auth.signOut();
+  throw new Error("Restricted to authority accounts only.");
 }
 
-      navigate("/authority/dashboard");
+navigate("/authority/dashboard");
     } catch (err) {
       setError(err.message || "Login failed. Please try again.");
     } finally {
@@ -498,12 +525,18 @@ export default function AuthorityLogin() {
 
       const userId = data.user?.id;
       if (userId) {
-        const { error: profileErr } = await supabase.from("profiles").insert({
-          id: userId,
-          full_name: signupForm.fullName.trim(),          
-          role: "admin",
-        });
-        if (profileErr) throw profileErr;
+const { error: profileErr } = await supabase.from("profiles").upsert({
+  id: userId,
+  full_name: signupForm.fullName.trim(),
+  role: "admin",
+}, { onConflict: "id" });
+
+if (profileErr) throw profileErr;
+
+// Also store role in auth metadata
+await supabase.auth.updateUser({
+  data: { role: "admin" }
+});
       }
 
       setSuccess("Account created! You can now sign in.");
@@ -698,7 +731,7 @@ export default function AuthorityLogin() {
             <div className="al-or">or</div>
             <div className="al-switch">
               Not an authority?{" "}
-              <a href="/login" onClick={e => { e.preventDefault(); navigate("/login"); }}>
+              <a href="/login" onClick={e => { e.preventDefault(); navigate("/citizen-login"); }}>
                 Citizen Portal →
               </a>
             </div>
