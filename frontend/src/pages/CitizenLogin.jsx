@@ -322,10 +322,23 @@ export default function CitizenLogin({ onSwitchToAuth }) {
           email: form.email,
           password: form.password,
         });
-        if (error) throw new Error(error.message);
+       if (error) throw new Error(error.message);
 
-        showToast("Welcome back!");
-        setTimeout(() => navigate('/my-issues'), 800);
+const { data: profile, error: profileErr } = await supabase
+  .from("profiles")
+  .select("role")
+  .eq("id", data.user.id)
+  .single();
+
+if (profileErr || !profile) throw new Error("Profile not found.");
+
+if (profile.role === 'admin' || profile.role === 'officer') {
+  await supabase.auth.signOut();
+  throw new Error("Please use the Authority portal to sign in.");
+}
+
+showToast("Welcome back!");
+setTimeout(() => navigate('/my-issues'), 800);
 
       } else {
         // ── SUPABASE SIGNUP ──

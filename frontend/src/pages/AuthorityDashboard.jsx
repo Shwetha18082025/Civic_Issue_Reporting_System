@@ -28,15 +28,15 @@ function Toast({ message, type, onClose }) {
   useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t) }, [onClose])
   return (
     <div style={{
-      position:'fixed',bottom:24,right:24,zIndex:9999,
-      background:type==='error'?'#fee2e2':'#d1fae5',
-      color:type==='error'?'#991b1b':'#065f46',
-      border:`1px solid ${type==='error'?'#fca5a5':'#6ee7b7'}`,
-      borderRadius:10,padding:'12px 20px',fontFamily:'sans-serif',
-      fontWeight:500,fontSize:14,boxShadow:'0 4px 20px rgba(0,0,0,0.1)',
-      display:'flex',alignItems:'center',gap:10,maxWidth:360,
+      position:'fixed', bottom:24, right:24, zIndex:9999,
+      background: type==='error' ? '#fee2e2' : '#d1fae5',
+      color: type==='error' ? '#991b1b' : '#065f46',
+      border: `1px solid ${type==='error' ? '#fca5a5' : '#6ee7b7'}`,
+      borderRadius:10, padding:'12px 20px', fontFamily:'sans-serif',
+      fontWeight:500, fontSize:14, boxShadow:'0 4px 20px rgba(0,0,0,0.1)',
+      display:'flex', alignItems:'center', gap:10, maxWidth:360,
     }}>
-      <span>{type==='error'?'✗':'✓'}</span>{message}
+      <span>{type==='error' ? '✗' : '✓'}</span>{message}
     </div>
   )
 }
@@ -48,6 +48,7 @@ export default function AuthorityDashboard() {
   const [issues, setIssues]           = useState([])
   const [categories, setCategories]   = useState([])
   const [officers, setOfficers]       = useState([])
+  const [reporters, setReporters]     = useState({})
   const [loading, setLoading]         = useState(true)
   const [selectedIssue, setSelected]  = useState(null)
   const [newStatus, setNewStatus]     = useState('')
@@ -64,32 +65,42 @@ export default function AuthorityDashboard() {
 
   const showToast = (msg, type='success') => setToast({ message: msg, type })
 
+  // Allow both admin and officer roles
   useEffect(() => {
-    if (profile && profile.role !== 'admin') navigate('/login')
+    if (profile && !['admin', 'officer'].includes(profile.role)) navigate('/login')
   }, [profile, navigate])
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
     try {
-      const [{ data: issuesData, error: ie }, { data: catsData }, { data: officersData }] =
-        await Promise.all([
-          supabase.from('issues').select(`
-            id, title, description, status, priority, ward, city, address,
-            category_id, reported_by, assigned_to, upvotes, created_at, updated_at,
-            latitude, longitude, ml_category, ml_confidence,
-            categories(name, icon), issue_images(image_url)
-          `).order('created_at', { ascending: false }),
-          supabase.from('categories').select('*'),
-          supabase.from('profiles').select('id, full_name, role').eq('role', 'admin'),
-        ])
+      const [
+        { data: issuesData, error: ie },
+        { data: catsData },
+        { data: officersData },
+        { data: profilesData },
+      ] = await Promise.all([
+        supabase.from('issues').select(`
+          id, title, description, status, priority, ward, city, address,
+          category_id, reported_by, assigned_to, upvotes, created_at, updated_at,
+          latitude, longitude, ml_category, ml_confidence,
+          categories(name, icon), issue_images(image_url)
+        `).order('created_at', { ascending: false }),
+        supabase.from('categories').select('*'),
+        supabase.from('profiles').select('id, full_name, role').in('role', ['admin', 'officer']),
+        supabase.from('profiles').select('id, full_name'),
+      ])
       if (ie) showToast('Failed to load: ' + ie.message, 'error')
       setIssues(issuesData || [])
       setCategories(catsData || [])
       setOfficers(officersData || [])
+      const map = {}
+      ;(profilesData || []).forEach(p => { map[p.id] = p.full_name })
+      setReporters(map)
     } catch(e) {
       showToast('Error: ' + e.message, 'error')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [])
 
   useEffect(() => { fetchAll() }, [fetchAll])
@@ -118,7 +129,7 @@ export default function AuthorityDashboard() {
 
   const wards = [...new Set(issues.map(i => i.ward).filter(Boolean))]
   const filtered = issues.filter(i => {
-    const ms = !search || [i.title, i.description, i.address].some(f => f?.toLowerCase().includes(search.toLowerCase()))
+    const ms = !search || [i.title, i.description, i.address, i.city].some(f => f?.toLowerCase().includes(search.toLowerCase()))
     return ms &&
       (filterStatus === 'all' || i.status === filterStatus) &&
       (filterCat === 'all' || String(i.category_id) === filterCat) &&
@@ -187,24 +198,27 @@ export default function AuthorityDashboard() {
         </div>
       </nav>
 
-      <main style={{ maxWidth: 1400, margin: '0 auto', padding: '24px' }}>
+      <main style={{ maxWidth: 1500, margin: '0 auto', padding: '24px' }}>
 
         {/* STATS */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 16, marginBottom: 24 }}>
           {[
-            { label: 'Total Issues',  value: stats.total,       color: '#1e293b', accent: '#6366f1', sub: 'All time' },
-            { label: 'Pending',       value: stats.pending,     color: '#92400e', accent: '#f59e0b', sub: 'Awaiting action' },
-            { label: 'In Progress',   value: stats.in_progress, color: '#1e40af', accent: '#3b82f6', sub: 'Being handled' },
-            { label: 'Resolved',      value: stats.resolved,    color: '#065f46', accent: '#10b981', sub: `${resRate}% rate` },
-            { label: 'Critical',      value: stats.critical,    color: '#991b1b', accent: '#ef4444', sub: 'High priority' },
-          ].map(({ label, value, color, accent, sub }) => (
+            { label: 'Total Issues',  value: stats.total,       color: '#1e293b', accent: '#6366f1', icon: '📋', sub: 'All time' },
+            { label: 'Pending',       value: stats.pending,     color: '#92400e', accent: '#f59e0b', icon: '⏳', sub: 'Awaiting action' },
+            { label: 'In Progress',   value: stats.in_progress, color: '#1e40af', accent: '#3b82f6', icon: '🔧', sub: 'Being handled' },
+            { label: 'Resolved',      value: stats.resolved,    color: '#065f46', accent: '#10b981', icon: '✅', sub: `${resRate}% rate` },
+            { label: 'Critical',      value: stats.critical,    color: '#991b1b', accent: '#ef4444', icon: '🚨', sub: 'High priority' },
+          ].map(({ label, value, color, accent, icon, sub }) => (
             <div key={label} style={{
               background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14,
               padding: '18px 20px', borderTop: `3px solid ${accent}`,
               boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
             }}>
-              <div style={{ fontSize: 30, fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
-              <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, marginTop: 4 }}>{label}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ fontSize: 30, fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
+                <span style={{ fontSize: 22 }}>{icon}</span>
+              </div>
+              <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, marginTop: 6 }}>{label}</div>
               <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{sub}</div>
             </div>
           ))}
@@ -222,12 +236,11 @@ export default function AuthorityDashboard() {
           ))}
         </div>
 
-        {/* ── ANALYTICS ── */}
+        {/* ── ANALYTICS TAB ── */}
         {activeTab === 'analytics' && (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
 
-              {/* Category Bar */}
               <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '22px 24px' }}>
                 <div style={{ fontWeight: 700, fontSize: 15, color: '#1e293b', marginBottom: 4 }}>Issues by Category</div>
                 <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>Total reports per category</div>
@@ -243,12 +256,9 @@ export default function AuthorityDashboard() {
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
-                ) : (
-                  <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No data yet</div>
-                )}
+                ) : <div style={{ textAlign:'center', padding:40, color:'#94a3b8' }}>No data yet</div>}
               </div>
 
-              {/* Status Donut */}
               <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '22px 24px' }}>
                 <div style={{ fontWeight: 700, fontSize: 15, color: '#1e293b', marginBottom: 4 }}>Status Breakdown</div>
                 <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>Distribution across all statuses</div>
@@ -272,12 +282,9 @@ export default function AuthorityDashboard() {
                       ))}
                     </div>
                   </div>
-                ) : (
-                  <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No data yet</div>
-                )}
+                ) : <div style={{ textAlign:'center', padding:40, color:'#94a3b8' }}>No data yet</div>}
               </div>
 
-              {/* Monthly Line */}
               <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '22px 24px' }}>
                 <div style={{ fontWeight: 700, fontSize: 15, color: '#1e293b', marginBottom: 4 }}>Monthly Trend</div>
                 <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>Issues reported over last 6 months</div>
@@ -291,12 +298,9 @@ export default function AuthorityDashboard() {
                       <Line type="monotone" dataKey="count" name="Issues" stroke="#6366f1" strokeWidth={2.5} dot={{ fill: '#6366f1', r: 4 }} activeDot={{ r: 6 }} />
                     </LineChart>
                   </ResponsiveContainer>
-                ) : (
-                  <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No data yet</div>
-                )}
+                ) : <div style={{ textAlign:'center', padding:40, color:'#94a3b8' }}>No data yet</div>}
               </div>
 
-              {/* Ward Bar */}
               <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '22px 24px' }}>
                 <div style={{ fontWeight: 700, fontSize: 15, color: '#1e293b', marginBottom: 4 }}>Ward Leaderboard</div>
                 <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>Issues per ward</div>
@@ -313,13 +317,10 @@ export default function AuthorityDashboard() {
                       <Bar dataKey="pending"  name="Pending"  fill="#f59e0b" radius={[4,4,0,0]} />
                     </BarChart>
                   </ResponsiveContainer>
-                ) : (
-                  <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No ward data</div>
-                )}
+                ) : <div style={{ textAlign:'center', padding:40, color:'#94a3b8' }}>No ward data</div>}
               </div>
             </div>
 
-            {/* Priority cards */}
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '22px 24px', marginBottom: 20 }}>
               <div style={{ fontWeight: 700, fontSize: 15, color: '#1e293b', marginBottom: 4 }}>Priority Distribution</div>
               <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>Breakdown by priority level</div>
@@ -344,7 +345,7 @@ export default function AuthorityDashboard() {
           </>
         )}
 
-        {/* ── ISSUES TABLE ── */}
+        {/* ── ISSUES TABLE TAB ── */}
         {activeTab === 'issues' && (
           <>
             <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -383,53 +384,160 @@ export default function AuthorityDashboard() {
                 <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>No issues match your filters
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-                <thead>
-                  <tr>
-                    {['Issue','Category','Status','Priority','Ward','Upvotes','Reported','Action'].map(h => (
-                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.07em', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map(issue => {
-                    const sc = statusColors[issue.status] || statusColors.pending
-                    const pc = priorityColors[issue.priority] || priorityColors.low
-                    return (
-                      <tr key={issue.id} style={{ cursor: 'pointer' }}
-                        onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                        onMouseLeave={e => e.currentTarget.style.background = ''}
-                        onClick={() => openModal(issue)}>
-                        <td style={{ padding: '14px 16px', fontSize: 14, color: '#374151', borderBottom: '1px solid #f1f5f9', maxWidth: 220 }}>
-                          <div style={{ fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{issue.title}</div>
-                          <div style={{ fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{issue.address || issue.city || '—'}</div>
-                        </td>
-                        <td style={{ padding: '14px 16px', fontSize: 14, color: '#374151', borderBottom: '1px solid #f1f5f9' }}>
-                          {issue.categories ? `${issue.categories.icon || ''} ${issue.categories.name}` : '—'}
-                        </td>
-                        <td style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: sc.bg, color: sc.color, borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 500 }}>
-                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: sc.dot }} />{sc.label}
-                          </span>
-                        </td>
-                        <td style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', background: pc.bg, color: pc.color, borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 500 }}>{issue.priority || 'low'}</span>
-                        </td>
-                        <td style={{ padding: '14px 16px', fontSize: 14, color: '#374151', borderBottom: '1px solid #f1f5f9' }}>{issue.ward || '—'}</td>
-                        <td style={{ padding: '14px 16px', fontSize: 14, color: '#374151', borderBottom: '1px solid #f1f5f9' }}>👍 {issue.upvotes || 0}</td>
-                        <td style={{ padding: '14px 16px', fontSize: 14, color: '#374151', borderBottom: '1px solid #f1f5f9' }}>
-                          {issue.created_at ? new Date(issue.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}
-                        </td>
-                        <td style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9' }}>
-                          <button onClick={e => { e.stopPropagation(); openModal(issue) }} style={{ padding: '5px 14px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', fontSize: 12, cursor: 'pointer', color: '#3b82f6', fontWeight: 600 }}>
-                            Update
-                          </button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+              <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      {/* ✅ Added Ward and Upvotes to headers */}
+                      {['Issue', 'Category', 'Location', 'Ward', 'Upvotes', 'Priority', 'Status', 'ML Category', 'Reported', 'Actions'].map(h => (
+                        <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.07em', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map(issue => {
+                      const sc = statusColors[issue.status] || statusColors.pending
+                      const pc = priorityColors[issue.priority] || priorityColors.low
+                      const thumb = issue.issue_images?.[0]?.image_url
+                      const reporterName = reporters[issue.reported_by] || 'Unknown'
+
+                      return (
+                        <tr
+                          key={issue.id}
+                          style={{ cursor: 'pointer' }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                          onMouseLeave={e => e.currentTarget.style.background = ''}
+                          onClick={() => openModal(issue)}
+                        >
+                          {/* ISSUE — thumbnail + title + reporter */}
+                          <td style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', maxWidth: 260 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              {thumb ? (
+                                <img
+                                  src={thumb}
+                                  alt=""
+                                  style={{ width: 46, height: 46, borderRadius: 8, objectFit: 'cover', flexShrink: 0, border: '1px solid #e2e8f0' }}
+                                />
+                              ) : (
+                                <div style={{ width: 46, height: 46, borderRadius: 8, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0, border: '1px solid #e2e8f0' }}>
+                                  {issue.categories?.icon || '📌'}
+                                </div>
+                              )}
+                              <div style={{ overflow: 'hidden' }}>
+                                <div style={{ fontWeight: 600, color: '#1e293b', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>
+                                  {issue.title}
+                                </div>
+                                <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                                  by {reporterName}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* CATEGORY */}
+                          <td style={{ padding: '12px 16px', fontSize: 14, color: '#374151', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
+                            {issue.categories ? `${issue.categories.icon || ''} ${issue.categories.name}` : '—'}
+                          </td>
+
+                          {/* LOCATION — now shows city/address only */}
+                          <td style={{ padding: '12px 16px', fontSize: 14, color: '#374151', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
+                            {issue.city || issue.address || '—'}
+                          </td>
+
+                          {/* ✅ WARD — new dedicated column */}
+                          <td style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
+                            {issue.ward ? (
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                background: '#f0f9ff', color: '#0369a1',
+                                borderRadius: 20, padding: '3px 10px',
+                                fontSize: 12, fontWeight: 600,
+                              }}>
+                                🗺️ {issue.ward}
+                              </span>
+                            ) : (
+                              <span style={{ color: '#cbd5e1', fontSize: 13 }}>—</span>
+                            )}
+                          </td>
+
+                          {/* ✅ UPVOTES — new dedicated column */}
+                          <td style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              background: (issue.upvotes || 0) > 0 ? '#fef3c7' : '#f8fafc',
+                              color: (issue.upvotes || 0) > 0 ? '#92400e' : '#94a3b8',
+                              borderRadius: 20, padding: '3px 10px',
+                              fontSize: 13, fontWeight: 700,
+                            }}>
+                              👍 {issue.upvotes || 0}
+                            </span>
+                          </td>
+
+                          {/* PRIORITY */}
+                          <td style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', background: pc.bg, color: pc.color, borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                              {issue.priority || 'low'}
+                            </span>
+                          </td>
+
+                          {/* STATUS */}
+                          <td style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: sc.bg, color: sc.color, borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 500 }}>
+                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: sc.dot, flexShrink: 0 }} />
+                              {sc.label}
+                            </span>
+                          </td>
+
+                          {/* ML CATEGORY */}
+                          <td style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
+                            {issue.ml_category ? (
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <span style={{ fontSize: 12 }}>🤖</span>
+                                  <span style={{ fontSize: 13, fontWeight: 600, color: '#4c1d95', textTransform: 'capitalize' }}>
+                                    {issue.ml_category.replace(/_/g, ' ')}
+                                  </span>
+                                </div>
+                                {issue.ml_confidence && (
+                                  <div style={{ fontSize: 11, color: '#7c3aed', marginTop: 2 }}>
+                                    {Math.round(issue.ml_confidence * 100)}% confidence
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span style={{ color: '#cbd5e1', fontSize: 13 }}>—</span>
+                            )}
+                          </td>
+
+                          {/* REPORTED DATE */}
+                          <td style={{ padding: '12px 16px', fontSize: 13, color: '#64748b', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
+                            {issue.created_at
+                              ? new Date(issue.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                              : '—'}
+                          </td>
+
+                          {/* ACTIONS */}
+                          <td style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
+                            <button
+                              onClick={e => { e.stopPropagation(); openModal(issue) }}
+                              onMouseEnter={e => e.currentTarget.style.background = '#334155'}
+                              onMouseLeave={e => e.currentTarget.style.background = '#1e293b'}
+                              style={{
+                                padding: '6px 18px', borderRadius: 7, border: 'none',
+                                background: '#1e293b', fontSize: 13, cursor: 'pointer',
+                                color: '#fff', fontWeight: 600, whiteSpace: 'nowrap',
+                                transition: 'background 0.15s',
+                              }}
+                            >
+                              Manage
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
           </>
         )}
@@ -437,77 +545,121 @@ export default function AuthorityDashboard() {
 
       {/* MODAL */}
       {selectedIssue && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20, backdropFilter: 'blur(4px)' }}
-          onClick={e => e.target === e.currentTarget && closeModal()}>
-          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,0.25)', padding: 28 }}>
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20, backdropFilter: 'blur(4px)' }}
+          onClick={e => e.target === e.currentTarget && closeModal()}
+        >
+          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 580, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,0.25)', padding: 28 }}>
+
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-              <div style={{ fontSize: 20, fontWeight: 700, color: '#1e293b' }}>{selectedIssue.title}</div>
-              <button onClick={closeModal} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#94a3b8' }}>✕</button>
+              <div style={{ fontSize: 20, fontWeight: 700, color: '#1e293b', paddingRight: 16 }}>{selectedIssue.title}</div>
+              <button onClick={closeModal} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#94a3b8', flexShrink: 0 }}>✕</button>
             </div>
-            <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 20 }}>
+
+            <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 16 }}>
               Reported {new Date(selectedIssue.created_at).toLocaleString('en-IN')}
               {selectedIssue.ward ? ` · Ward: ${selectedIssue.ward}` : ''}
               {selectedIssue.city ? ` · ${selectedIssue.city}` : ''}
+              {selectedIssue.reported_by ? ` · by ${reporters[selectedIssue.reported_by] || 'Unknown'}` : ''}
             </div>
 
+            {/* Status + Priority + Upvotes badges */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+              {(() => {
+                const sc = statusColors[selectedIssue.status] || statusColors.pending
+                const pc = priorityColors[selectedIssue.priority] || priorityColors.low
+                return (
+                  <>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: sc.bg, color: sc.color, borderRadius: 20, padding: '4px 12px', fontSize: 13, fontWeight: 500 }}>
+                      <span style={{ width: 7, height: 7, borderRadius: '50%', background: sc.dot }} />{sc.label}
+                    </span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', background: pc.bg, color: pc.color, borderRadius: 20, padding: '4px 12px', fontSize: 13, fontWeight: 600, textTransform: 'capitalize' }}>
+                      {selectedIssue.priority || 'low'} priority
+                    </span>
+                    {/* ✅ Upvotes badge in modal */}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: (selectedIssue.upvotes || 0) > 0 ? '#fef3c7' : '#f1f5f9', color: (selectedIssue.upvotes || 0) > 0 ? '#92400e' : '#94a3b8', borderRadius: 20, padding: '4px 12px', fontSize: 13, fontWeight: 700 }}>
+                      👍 {selectedIssue.upvotes || 0} upvote{selectedIssue.upvotes !== 1 ? 's' : ''}
+                    </span>
+                    {/* ✅ Ward badge in modal */}
+                    {selectedIssue.ward && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#f0f9ff', color: '#0369a1', borderRadius: 20, padding: '4px 12px', fontSize: 13, fontWeight: 600 }}>
+                        🗺️ {selectedIssue.ward}
+                      </span>
+                    )}
+                  </>
+                )
+              })()}
+            </div>
+
+            {/* Images */}
             {selectedIssue.issue_images?.length > 0 && (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
                 {selectedIssue.issue_images.map((img,i) => (
-                  <img key={i} src={img.image_url} alt="Issue" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '1px solid #e2e8f0' }} />
+                  <img key={i} src={img.image_url} alt="Issue" style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 10, border: '1px solid #e2e8f0' }} />
                 ))}
               </div>
             )}
 
+            {/* Description */}
             {selectedIssue.description && (
-              <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.7, marginBottom: 16, background: '#f8fafc', borderRadius: 8, padding: 12 }}>{selectedIssue.description}</p>
+              <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.7, marginBottom: 16, background: '#f8fafc', borderRadius: 8, padding: 12 }}>
+                {selectedIssue.description}
+              </p>
             )}
 
-            <div style={{ borderBottom: '1px solid #f1f5f9', marginBottom: 16, paddingBottom: 16 }} />
+            <div style={{ borderBottom: '1px solid #f1f5f9', marginBottom: 16 }} />
 
+            {/* AI Analysis */}
             {selectedIssue.ml_category && (
-  <div style={{ marginBottom: 16, background: 'linear-gradient(135deg, #f5f3ff, #ede9fe)', borderRadius: 10, padding: '12px 14px', border: '1px solid #ddd6fe' }}>
-    <div style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
-      🤖 AI Analysis
-    </div>
-    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-      <div>
-        <div style={{ fontSize: 11, color: '#7c3aed', marginBottom: 2 }}>Detected Category</div>
-        <div style={{ fontSize: 14, fontWeight: 700, color: '#4c1d95' }}>
-          {selectedIssue.ml_category.replace('_', ' ')}
-        </div>
-      </div>
-      {selectedIssue.ml_confidence && (
-        <div>
-          <div style={{ fontSize: 11, color: '#7c3aed', marginBottom: 2 }}>Confidence</div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#4c1d95' }}>
-            {Math.round(selectedIssue.ml_confidence * 100)}%
-          </div>
-        </div>
-      )}
-      <div>
-        <div style={{ fontSize: 11, color: '#7c3aed', marginBottom: 2 }}>Priority</div>
-        <div style={{ fontSize: 14, fontWeight: 700, color: '#4c1d95', textTransform: 'capitalize' }}>
-          {selectedIssue.priority}
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+              <div style={{ marginBottom: 16, background: 'linear-gradient(135deg, #f5f3ff, #ede9fe)', borderRadius: 10, padding: '12px 14px', border: '1px solid #ddd6fe' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
+                  🤖 AI Analysis
+                </div>
+                <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: '#7c3aed', marginBottom: 2 }}>Detected Category</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#4c1d95', textTransform: 'capitalize' }}>
+                      {selectedIssue.ml_category.replace(/_/g, ' ')}
+                    </div>
+                  </div>
+                  {selectedIssue.ml_confidence && (
+                    <div>
+                      <div style={{ fontSize: 11, color: '#7c3aed', marginBottom: 2 }}>Confidence</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#4c1d95' }}>
+                        {Math.round(selectedIssue.ml_confidence * 100)}%
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <div style={{ fontSize: 11, color: '#7c3aed', marginBottom: 2 }}>Suggested Priority</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#4c1d95', textTransform: 'capitalize' }}>
+                      {selectedIssue.priority}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6, display: 'block' }}>Update Status</label>
-            <select value={newStatus} onChange={e => setNewStatus(e.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', color: '#1e293b', marginBottom: 16 }}>
+            <select value={newStatus} onChange={e => setNewStatus(e.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', color: '#1e293b', marginBottom: 16, background: '#fff' }}>
               {Object.entries(statusColors).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
 
             <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6, display: 'block' }}>Assign Officer</label>
-            <select value={assignTo} onChange={e => setAssignTo(e.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', color: '#1e293b', marginBottom: 16 }}>
+            <select value={assignTo} onChange={e => setAssignTo(e.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', color: '#1e293b', marginBottom: 24, background: '#fff' }}>
               <option value="">— Unassigned —</option>
               {officers.map(o => <option key={o.id} value={o.id}>{o.full_name} ({o.role})</option>)}
             </select>
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={closeModal} style={{ padding: '10px 20px', borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#fff', fontSize: 14, cursor: 'pointer', color: '#64748b', fontWeight: 500 }}>Cancel</button>
-              <button onClick={handleUpdateIssue} disabled={updatingStatus} style={{ padding: '10px 24px', borderRadius: 8, border: 'none', background: updatingStatus ? '#94a3b8' : '#1e293b', fontSize: 14, cursor: updatingStatus ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: 600 }}>
+              <button onClick={closeModal} style={{ padding: '10px 20px', borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#fff', fontSize: 14, cursor: 'pointer', color: '#64748b', fontWeight: 500 }}>
+                Cancel
+              </button>
+              <button
+                onClick={handleUpdateIssue}
+                disabled={updatingStatus}
+                style={{ padding: '10px 24px', borderRadius: 8, border: 'none', background: updatingStatus ? '#94a3b8' : '#1e293b', fontSize: 14, cursor: updatingStatus ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: 600 }}
+              >
                 {updatingStatus ? 'Saving…' : 'Save Changes'}
               </button>
             </div>
