@@ -75,9 +75,9 @@ export default function Navbar() {
       : []),
 
     {
-      to: '/issue-map',
-      label: '🗺️ Issue Map',
-    },
+  to: '/issue-map',
+  label: `🗺️ ${t('nav.issueMap')}`,
+},
   ]
 
   return (

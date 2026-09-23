@@ -148,6 +148,7 @@ useEffect(() => {
             new_status: finalStatus,
             note: `Assigned to ${org.name} (${org.type === 'ngo' ? 'NGO' : 'Department'})`,
           })
+
           if (selectedIssue.reported_by) {
             await supabase.from('notifications').insert({
               user_id: selectedIssue.reported_by,
@@ -156,15 +157,28 @@ useEffect(() => {
               type: 'assignment',
             })
           }
-          if (orgNote.trim()) {
-            await supabase.from('comments').insert({
-              issue_id: selectedIssue.id,
-              user_id: user?.id,
-              content: orgNote.trim(),
-              is_official: true,
-            })
+        } catch (sideErr) {
+          console.warn('Assignment extras failed:', sideErr)
+        }
+      }
+
+      // Save the citizen note independently, even if the department/NGO
+      // was not changed.
+      if (orgNote.trim()) {
+        try {
+          const { error: noteError } = await supabase.from('comments').insert({
+            issue_id: selectedIssue.id,
+            user_id: user?.id,
+            content: orgNote.trim(),
+            is_official: true,
+          })
+
+          if (noteError) {
+            console.warn('Citizen note could not be saved:', noteError.message)
           }
-        } catch (sideErr) { console.warn('Assignment extras failed:', sideErr) }
+        } catch (noteErr) {
+          console.warn('Citizen note save failed:', noteErr)
+        }
       }
 
       showToast(orgChanged && org ? `Issue assigned to ${org.name}!` : 'Issue updated!')
@@ -756,13 +770,50 @@ useEffect(() => {
                     </div>
                   )}
 
-                  {(assignOrg || '') !== (selectedIssue.assigned_org || '') && assignOrg && (
-                    <textarea
-                      value={orgNote}
-                      onChange={e => setOrgNote(e.target.value)}
-                      placeholder="Note for the citizen (optional) — shown as an official comment"
-                      style={{ width: '100%', marginTop: 10, padding: '9px 12px', border: '1.5px solid #a7f3d0', borderRadius: 8, fontSize: 13, outline: 'none', color: '#1e293b', minHeight: 60, resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
-                    />
+                  {assignOrg && (
+                    <div style={{ marginTop: 10 }}>
+                      <label
+                        style={{
+                          display: 'block',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: '#065f46',
+                          marginBottom: 6,
+                        }}
+                      >
+                        📝 Note for Citizen
+                      </label>
+
+                      <textarea
+                        value={orgNote}
+                        onChange={e => setOrgNote(e.target.value)}
+                        placeholder="Write a note for the citizen (optional). This will be shown as an official comment."
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          border: '1.5px solid #a7f3d0',
+                          borderRadius: 8,
+                          fontSize: 13,
+                          outline: 'none',
+                          color: '#1e293b',
+                          minHeight: 70,
+                          resize: 'vertical',
+                          fontFamily: 'inherit',
+                          boxSizing: 'border-box',
+                          background: '#ffffff',
+                        }}
+                      />
+
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: '#64748b',
+                          marginTop: 5,
+                        }}
+                      >
+                        This note will be visible to the citizen as an official update.
+                      </div>
+                    </div>
                   )}
                 </div>
               )
