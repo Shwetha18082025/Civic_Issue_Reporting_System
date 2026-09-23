@@ -76,6 +76,18 @@ export default function IssueDetail() {
         setIssue(prev => ({ ...prev, reporter: reporterData }))
       }
     }
+
+    // Department / NGO handling this issue
+    if (data.assigned_org) {
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('name, type, phone, email')
+        .eq('id', data.assigned_org)
+        .single()
+      if (orgData) {
+        setIssue(prev => ({ ...prev, org: orgData }))
+      }
+    }
   }
   setLoading(false)
 }
@@ -404,6 +416,22 @@ export default function IssueDetail() {
               </a>
             )}
           </div>
+
+          {/* Handled by (department / NGO) */}
+          {issue.org && (
+            <div style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', borderRadius: '16px', padding: '1.25rem', border: '1px solid #bbf7d0' }}>
+              <h2 style={{ fontSize: '0.85rem', fontWeight: 700, color: '#15803d', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>
+                {issue.org.type === 'ngo' ? '🤝' : '🏢'} Being handled by
+              </h2>
+              <p style={{ fontSize: '0.95rem', fontWeight: 700, color: '#14532d', margin: 0 }}>{issue.org.name}</p>
+              <p style={{ fontSize: '0.78rem', color: '#16a34a', marginTop: '0.25rem' }}>
+                {issue.org.type === 'ngo' ? 'Partner NGO' : 'Government department'}
+              </p>
+              {issue.org.phone && (
+                <p style={{ fontSize: '0.8rem', color: '#166534', marginTop: '0.5rem' }}>📞 {issue.org.phone}</p>
+              )}
+            </div>
+          )}
 
           {/* AI Analysis card */}
           {issue.ml_category && (

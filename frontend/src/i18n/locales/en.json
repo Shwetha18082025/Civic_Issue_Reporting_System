@@ -1,0 +1,86 @@
+{
+  "language": { "label": "Language" },
+  "nav": {
+    "home": "Home",
+    "report": "Report Issue",
+    "myIssues": "My Issues",
+    "dashboard": "Dashboard",
+    "signIn": "Sign in",
+    "getStarted": "Get Started",
+    "signOut": "Sign out",
+    "user": "User"
+  },
+  "home": {
+    "badge": "Built for Indian Cities",
+    "heroTitle1": "Report Civic Issues.",
+    "heroTitle2": "Make Cities Better.",
+    "heroSub": "Connect directly with local authorities to fix potholes, broken streetlights, garbage overflow, water leaks — and actually see them get resolved.",
+    "reportIssue": "📍 Report an Issue",
+    "myIssues": "My Issues →",
+    "getStartedFree": "Get Started Free →",
+    "signIn": "Sign In",
+    "stats": {
+      "categories": "Issue categories",
+      "roles": "User roles",
+      "ai": "Powered triage",
+      "always": "Always on"
+    },
+    "stepsEyebrow": "Simple Process",
+    "stepsTitle": "Three steps to resolution",
+    "steps": {
+      "register": { "title": "Register", "desc": "Create a free citizen account in under a minute." },
+      "report":   { "title": "Report",   "desc": "Describe the issue, upload a photo, pin the location." },
+      "track":    { "title": "Track",    "desc": "Watch your issue get assigned and resolved live." }
+    },
+    "featuresEyebrow": "Platform Features",
+    "featuresTitle": "Everything you need",
+    "features": {
+      "pin":       { "title": "Pin & Report",      "desc": "Drop a pin on the map and submit civic issues with photos in under 60 seconds." },
+      "tracking":  { "title": "Live Tracking",     "desc": "Real-time status updates as your issue moves from pending to fully resolved." },
+      "votes":     { "title": "Community Votes",   "desc": "Upvote existing issues to push critical problems to the top of the queue." },
+      "heatmap":   { "title": "Issue Heatmap",     "desc": "Visualize problem clusters across your city on an interactive live map." },
+      "dashboard": { "title": "Officer Dashboard", "desc": "Municipal teams manage assignments, track SLAs and close issues efficiently." },
+      "ai":        { "title": "AI Triage",         "desc": "ML models auto-classify issues and predict resolution priority intelligently." }
+    },
+    "categoriesEyebrow": "What We Cover",
+    "categoriesTitle": "Every civic problem",
+    "ctaTitle1": "Ready to make a",
+    "ctaTitle2": "real difference?",
+    "ctaSub": "Join citizens already using CivicReport to hold local authorities accountable.",
+    "ctaButton": "Create Free Account →",
+    "footer": "© 2026 CivicReport — Making cities better, one report at a time."
+  },
+  "status": {
+    "pending": "Pending",
+    "assigned": "Assigned",
+    "in_progress": "In Progress",
+    "resolved": "Resolved",
+    "rejected": "Rejected",
+    "duplicate": "Duplicate"
+  },
+  "priority": {
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "critical": "Critical"
+  },
+  "categories": {
+    "Pothole": "Pothole",
+    "Street Light": "Street Light",
+    "Garbage": "Garbage",
+    "Water Leak": "Water Leak",
+    "Sewage": "Sewage",
+    "Tree Hazard": "Tree Hazard",
+    "Road Damage": "Road Damage",
+    "Public Toilet": "Public Toilet",
+    "Noise Pollution": "Noise Pollution",
+    "Other": "Other"
+  },
+  "ml": {
+    "road_damage": "Road damage",
+    "garbage": "Garbage",
+    "street_light": "Street light",
+    "water_leak": "Water leak",
+    "other": "Other"
+  }
+}

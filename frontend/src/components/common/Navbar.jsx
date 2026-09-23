@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../context/AuthContext'
+import LanguageSwitcher from './LanguageSwitcher'
 
 export default function Navbar() {
+  const { t } = useTranslation()
   const { user, profile, signOut } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -58,10 +61,10 @@ export default function Navbar() {
           {/* Desktop Nav */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
             {[
-    { to: '/', label: 'Home' },
-    ...((!user || profile?.role === 'citizen') ? [{ to: '/report', label: 'Report Issue' }] : []),
-    ...(user && profile?.role === 'citizen' ? [{ to: '/my-issues', label: 'My Issues' }] : []),
-    ...(user && (profile?.role === 'officer' || profile?.role === 'admin') ? [{ to: '/authority/dashboard', label: 'Dashboard' }] : []),
+    { to: '/', label: t('nav.home') },
+    ...((!user || profile?.role === 'citizen') ? [{ to: '/report', label: t('nav.report') }] : []),
+    ...(user && profile?.role === 'citizen' ? [{ to: '/my-issues', label: t('nav.myIssues') }] : []),
+    ...(user && (profile?.role === 'officer' || profile?.role === 'admin') ? [{ to: '/authority/dashboard', label: t('nav.dashboard') }] : []),
 ].map(({ to, label }) => (
               <Link
                 key={to}
@@ -75,6 +78,7 @@ export default function Navbar() {
                   borderRadius: '8px',
                   transition: 'all 0.15s ease',
                   background: isActive(to) ? 'rgba(245,158,11,0.1)' : 'transparent',
+                  whiteSpace: 'nowrap',
                 }}
               >
                 {label}
@@ -84,6 +88,8 @@ export default function Navbar() {
 
           {/* Auth buttons */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <LanguageSwitcher />
+
             {user ? (
               <>
                 <div style={{
@@ -103,7 +109,7 @@ export default function Navbar() {
                     {profile?.full_name?.[0]?.toUpperCase() || 'U'}
                   </div>
                   <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.85rem', fontWeight: 500 }}>
-                    {profile?.full_name?.split(' ')[0] || 'User'}
+                    {profile?.full_name?.split(' ')[0] || t('nav.user')}
                   </span>
                 </div>
                 <button
@@ -118,11 +124,13 @@ export default function Navbar() {
                     fontWeight: 500,
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
+                    whiteSpace: 'nowrap',
+                    fontFamily: 'inherit',
                   }}
                   onMouseEnter={e => { e.target.style.borderColor = 'rgba(255,255,255,0.6)'; e.target.style.color = 'white' }}
                   onMouseLeave={e => { e.target.style.borderColor = 'rgba(255,255,255,0.25)'; e.target.style.color = 'rgba(255,255,255,0.7)' }}
                 >
-                  Sign out
+                  {t('nav.signOut')}
                 </button>
               </>
             ) : (
@@ -135,12 +143,13 @@ export default function Navbar() {
                     fontSize: '0.9rem',
                     fontWeight: 500,
                     padding: '0.5rem 0.9rem',
+                    whiteSpace: 'nowrap',
                   }}
                 >
-                  Sign in
+                  {t('nav.signIn')}
                 </Link>
-                <Link to="/register" className="btn-primary" style={{ fontSize: '0.9rem', padding: '0.5rem 1.25rem' }}>
-                  Get Started
+                <Link to="/register" className="btn-primary" style={{ fontSize: '0.9rem', padding: '0.5rem 1.25rem', whiteSpace: 'nowrap' }}>
+                  {t('nav.getStarted')}
                 </Link>
               </>
             )}
