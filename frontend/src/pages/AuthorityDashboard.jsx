@@ -53,6 +53,9 @@ export default function AuthorityDashboard() {
   const [selectedIssue, setSelected]  = useState(null)
   const [newStatus, setNewStatus]     = useState('')
   const [assignTo, setAssignTo]       = useState('')
+  const [orgs, setOrgs]               = useState([])   // departments + NGOs
+  const [assignOrg, setAssignOrg]     = useState('')
+  const [orgNote, setOrgNote]         = useState('')
   const [updatingStatus, setUpdating] = useState(false)
   const [toast, setToast]             = useState(null)
   const [activeTab, setActiveTab]     = useState('issues')
@@ -84,7 +87,7 @@ useEffect(() => {
         supabase.from('issues').select(`
           id, title, description, status, priority, ward, city, address,
           category_id, reported_by, assigned_to, upvotes, created_at, updated_at,
-          latitude, longitude, ml_category, ml_confidence,
+          latitude, longitude, ml_category, ml_confidence, assigned_org,
           categories(name, icon), issue_images(image_url)
         `).order('created_at', { ascending: false }),
         supabase.from('categories').select('*'),
@@ -98,6 +101,12 @@ useEffect(() => {
       const map = {}
       ;(profilesData || []).forEach(p => { map[p.id] = p.full_name })
       setReporters(map)
+
+      // Departments + NGOs (loaded separately so the dashboard still works if this fails)
+      const { data: orgsData, error: oe } = await supabase
+        .from('organizations').select('*').eq('is_active', true).order('type').order('name')
+      if (oe) console.warn('Organizations not loaded:', oe.message)
+      setOrgs(orgsData || [])
     } catch(e) {
       showToast('Error: ' + e.message, 'error')
     } finally {
@@ -111,23 +120,70 @@ useEffect(() => {
     if (!selectedIssue) return
     setUpdating(true)
     try {
+      const orgChanged = (assignOrg || null) !== (selectedIssue.assigned_org || null)
+      const org = orgs.find(o => o.id === assignOrg)
+      // Assigning a pending issue to a team moves it to "assigned"
+      const finalStatus = orgChanged && org && newStatus === 'pending' ? 'assigned' : newStatus
+
       const payload = {
-        status: newStatus,
+        status: finalStatus,
         assigned_to: assignTo || null,
         updated_at: new Date().toISOString(),
       }
-      if (newStatus === 'resolved') payload.resolved_at = new Date().toISOString()
+      if (orgChanged) {
+        payload.assigned_org = assignOrg || null
+        payload.assigned_org_at = assignOrg ? new Date().toISOString() : null
+      }
+      if (finalStatus === 'resolved') payload.resolved_at = new Date().toISOString()
       const { error } = await supabase.from('issues').update(payload).eq('id', selectedIssue.id)
       if (error) throw error
-      showToast('Issue updated!')
+
+      // Side effects — never block the save if one of these fails
+      if (orgChanged && org) {
+        try {
+          await supabase.from('audit_logs').insert({
+            issue_id: selectedIssue.id,
+            changed_by: user?.id,
+            old_status: selectedIssue.status,
+            new_status: finalStatus,
+            note: `Assigned to ${org.name} (${org.type === 'ngo' ? 'NGO' : 'Department'})`,
+          })
+          if (selectedIssue.reported_by) {
+            await supabase.from('notifications').insert({
+              user_id: selectedIssue.reported_by,
+              issue_id: selectedIssue.id,
+              message: `Your issue "${selectedIssue.title}" has been assigned to ${org.name}.`,
+              type: 'assignment',
+            })
+          }
+          if (orgNote.trim()) {
+            await supabase.from('comments').insert({
+              issue_id: selectedIssue.id,
+              user_id: user?.id,
+              content: orgNote.trim(),
+              is_official: true,
+            })
+          }
+        } catch (sideErr) { console.warn('Assignment extras failed:', sideErr) }
+      }
+
+      showToast(orgChanged && org ? `Issue assigned to ${org.name}!` : 'Issue updated!')
       await fetchAll()
       closeModal()
     } catch(e) { showToast(e.message, 'error') }
     setUpdating(false)
   }
 
-  function openModal(issue) { setSelected(issue); setNewStatus(issue.status); setAssignTo(issue.assigned_to || '') }
-  function closeModal() { setSelected(null); setNewStatus(''); setAssignTo('') }
+  function openModal(issue) { setSelected(issue); setNewStatus(issue.status); setAssignTo(issue.assigned_to || ''); setAssignOrg(issue.assigned_org || ''); setOrgNote('') }
+  function closeModal() { setSelected(null); setNewStatus(''); setAssignTo(''); setAssignOrg(''); setOrgNote('') }
+
+  // AI suggestion: first department (then NGO) that handles the ML-predicted category
+  function suggestedOrgFor(issue) {
+    if (!issue?.ml_category) return null
+    const matches = orgs.filter(o => (o.handles || []).includes(issue.ml_category))
+    return matches.find(o => o.type === 'department') || matches[0] || null
+  }
+  const orgName = (id) => orgs.find(o => o.id === id)?.name
 
   const wards = [...new Set(issues.map(i => i.ward).filter(Boolean))]
   const filtered = issues.filter(i => {
@@ -386,13 +442,13 @@ useEffect(() => {
                 <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>No issues match your filters
               </div>
             ) : (
-              <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+              <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', overflowX: 'auto', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
                       {/* ✅ Added Ward and Upvotes to headers */}
-                      {['Issue', 'Category', 'Location', 'Ward', 'Upvotes', 'Priority', 'Status', 'ML Category', 'Reported', 'Actions'].map(h => (
-                        <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.07em', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+                      {['Issue', 'Category', 'Location', 'Upvotes', 'Priority', 'Status', 'Assigned To', 'ML Category', 'Reported', 'Actions'].map(h => (
+                        <th key={h} style={{ padding: '10px 8px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -412,21 +468,21 @@ useEffect(() => {
                           onClick={() => openModal(issue)}
                         >
                           {/* ISSUE — thumbnail + title + reporter */}
-                          <td style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', maxWidth: 260 }}>
+                          <td style={{ padding: '10px 8px', borderBottom: '1px solid #f1f5f9', maxWidth: 220 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                               {thumb ? (
                                 <img
                                   src={thumb}
                                   alt=""
-                                  style={{ width: 46, height: 46, borderRadius: 8, objectFit: 'cover', flexShrink: 0, border: '1px solid #e2e8f0' }}
+                                  style={{ width: 38, height: 38, borderRadius: 8, objectFit: 'cover', flexShrink: 0, border: '1px solid #e2e8f0' }}
                                 />
                               ) : (
-                                <div style={{ width: 46, height: 46, borderRadius: 8, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0, border: '1px solid #e2e8f0' }}>
+                                <div style={{ width: 38, height: 38, borderRadius: 8, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0, border: '1px solid #e2e8f0' }}>
                                   {issue.categories?.icon || '📌'}
                                 </div>
                               )}
                               <div style={{ overflow: 'hidden' }}>
-                                <div style={{ fontWeight: 600, color: '#1e293b', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>
+                                <div style={{ fontWeight: 600, color: '#1e293b', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 150 }}>
                                   {issue.title}
                                 </div>
                                 <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
@@ -437,23 +493,19 @@ useEffect(() => {
                           </td>
 
                           {/* CATEGORY */}
-                          <td style={{ padding: '12px 16px', fontSize: 14, color: '#374151', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
+                          <td style={{ padding: '10px 8px', fontSize: 13, color: '#374151', borderBottom: '1px solid #f1f5f9', maxWidth: 120 }}>
                             {issue.categories ? `${issue.categories.icon || ''} ${issue.categories.name}` : '—'}
                           </td>
 
-                          {/* LOCATION — now shows city/address only */}
-                          <td style={{ padding: '12px 16px', fontSize: 14, color: '#374151', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
-                            {issue.city || issue.address || '—'}
-                          </td>
-
-                          {/* ✅ WARD — new dedicated column */}
-                          <td style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
+                          {/* LOCATION — city with ward badge underneath */}
+                          <td style={{ padding: '10px 8px', fontSize: 13, color: '#374151', borderBottom: '1px solid #f1f5f9' }}>
+                            <div style={{ marginBottom: 4 }}>{issue.city || issue.address || '—'}</div>
                             {issue.ward ? (
                               <span style={{
                                 display: 'inline-flex', alignItems: 'center', gap: 4,
                                 background: '#f0f9ff', color: '#0369a1',
-                                borderRadius: 20, padding: '3px 10px',
-                                fontSize: 12, fontWeight: 600,
+                                borderRadius: 20, padding: '2px 8px',
+                                fontSize: 11, fontWeight: 600,
                               }}>
                                 🗺️ {issue.ward}
                               </span>
@@ -463,7 +515,7 @@ useEffect(() => {
                           </td>
 
                           {/* ✅ UPVOTES — new dedicated column */}
-                          <td style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
+                          <td style={{ padding: '10px 8px', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
                             <span style={{
                               display: 'inline-flex', alignItems: 'center', gap: 4,
                               background: (issue.upvotes || 0) > 0 ? '#fef3c7' : '#f8fafc',
@@ -476,22 +528,33 @@ useEffect(() => {
                           </td>
 
                           {/* PRIORITY */}
-                          <td style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '10px 8px', borderBottom: '1px solid #f1f5f9' }}>
                             <span style={{ display: 'inline-flex', alignItems: 'center', background: pc.bg, color: pc.color, borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                               {issue.priority || 'low'}
                             </span>
                           </td>
 
                           {/* STATUS */}
-                          <td style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '10px 8px', borderBottom: '1px solid #f1f5f9' }}>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: sc.bg, color: sc.color, borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 500 }}>
                               <span style={{ width: 6, height: 6, borderRadius: '50%', background: sc.dot, flexShrink: 0 }} />
                               {sc.label}
                             </span>
                           </td>
 
+                          {/* ASSIGNED TO (department / NGO) */}
+                          <td style={{ padding: '10px 8px', borderBottom: '1px solid #f1f5f9', maxWidth: 140 }}>
+                            {issue.assigned_org && orgName(issue.assigned_org) ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#ecfdf5', color: '#065f46', borderRadius: 10, padding: '3px 8px', fontSize: 11, fontWeight: 600, lineHeight: 1.3 }}>
+                                {orgs.find(o => o.id === issue.assigned_org)?.type === 'ngo' ? '🤝' : '🏢'} {orgName(issue.assigned_org)}
+                              </span>
+                            ) : (
+                              <span style={{ color: '#cbd5e1', fontSize: 13 }}>—</span>
+                            )}
+                          </td>
+
                           {/* ML CATEGORY */}
-                          <td style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '10px 8px', borderBottom: '1px solid #f1f5f9' }}>
                             {issue.ml_category ? (
                               <div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -512,20 +575,20 @@ useEffect(() => {
                           </td>
 
                           {/* REPORTED DATE */}
-                          <td style={{ padding: '12px 16px', fontSize: 13, color: '#64748b', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
+                          <td style={{ padding: '10px 8px', fontSize: 13, color: '#64748b', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
                             {issue.created_at
-                              ? new Date(issue.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                              ? new Date(issue.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })
                               : '—'}
                           </td>
 
                           {/* ACTIONS */}
-                          <td style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '10px 8px', borderBottom: '1px solid #f1f5f9' }}>
                             <button
                               onClick={e => { e.stopPropagation(); openModal(issue) }}
                               onMouseEnter={e => e.currentTarget.style.background = '#334155'}
                               onMouseLeave={e => e.currentTarget.style.background = '#1e293b'}
                               style={{
-                                padding: '6px 18px', borderRadius: 7, border: 'none',
+                                padding: '6px 12px', borderRadius: 7, border: 'none',
                                 background: '#1e293b', fontSize: 13, cursor: 'pointer',
                                 color: '#fff', fontWeight: 600, whiteSpace: 'nowrap',
                                 transition: 'background 0.15s',
@@ -641,6 +704,69 @@ useEffect(() => {
                 </div>
               </div>
             )}
+
+            {/* ── Assign to Department / NGO ── */}
+            {(() => {
+              const suggestion = suggestedOrgFor(selectedIssue)
+              const chosen = orgs.find(o => o.id === assignOrg)
+              const departments = orgs.filter(o => o.type === 'department')
+              const ngos = orgs.filter(o => o.type === 'ngo')
+              return (
+                <div style={{ marginBottom: 20, border: '1px solid #d1fae5', background: '#f0fdf4', borderRadius: 10, padding: '12px 14px' }}>
+                  <label style={{ fontSize: 13, fontWeight: 700, color: '#065f46', marginBottom: 8, display: 'block' }}>
+                    🏢 Assign to Department / NGO
+                  </label>
+
+                  {suggestion && suggestion.id !== assignOrg && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: '#fff', border: '1px dashed #a7f3d0', borderRadius: 8, padding: '8px 10px', marginBottom: 10, fontSize: 13, color: '#065f46' }}>
+                      <span>🤖 AI suggests: <strong>{suggestion.name}</strong></span>
+                      <button
+                        type="button"
+                        onClick={() => setAssignOrg(suggestion.id)}
+                        style={{ padding: '5px 12px', borderRadius: 6, border: 'none', background: '#059669', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      >
+                        Use suggestion
+                      </button>
+                    </div>
+                  )}
+
+                  <select value={assignOrg} onChange={e => setAssignOrg(e.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #a7f3d0', borderRadius: 8, fontSize: 14, outline: 'none', color: '#1e293b', background: '#fff' }}>
+                    <option value="">— Not assigned —</option>
+                    {departments.length > 0 && (
+                      <optgroup label="Government departments">
+                        {departments.map(o => <option key={o.id} value={o.id}>🏢 {o.name}</option>)}
+                      </optgroup>
+                    )}
+                    {ngos.length > 0 && (
+                      <optgroup label="Partner NGOs">
+                        {ngos.map(o => <option key={o.id} value={o.id}>🤝 {o.name}</option>)}
+                      </optgroup>
+                    )}
+                  </select>
+
+                  {orgs.length === 0 && (
+                    <div style={{ fontSize: 12, color: '#b45309', marginTop: 6 }}>
+                      No departments or NGOs found. Run the organizations SQL in Supabase first.
+                    </div>
+                  )}
+
+                  {chosen && (chosen.contact_person || chosen.phone || chosen.email) && (
+                    <div style={{ fontSize: 12, color: '#475569', marginTop: 8 }}>
+                      Contact: {[chosen.contact_person, chosen.phone, chosen.email].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
+
+                  {(assignOrg || '') !== (selectedIssue.assigned_org || '') && assignOrg && (
+                    <textarea
+                      value={orgNote}
+                      onChange={e => setOrgNote(e.target.value)}
+                      placeholder="Note for the citizen (optional) — shown as an official comment"
+                      style={{ width: '100%', marginTop: 10, padding: '9px 12px', border: '1.5px solid #a7f3d0', borderRadius: 8, fontSize: 13, outline: 'none', color: '#1e293b', minHeight: 60, resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                    />
+                  )}
+                </div>
+              )
+            })()}
 
             <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6, display: 'block' }}>Update Status</label>
             <select value={newStatus} onChange={e => setNewStatus(e.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', color: '#1e293b', marginBottom: 16, background: '#fff' }}>

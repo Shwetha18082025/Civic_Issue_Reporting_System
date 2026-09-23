@@ -1,12 +1,13 @@
 @import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Fraunces:ital,wght@0,700;0,900;1,700&display=swap');
-
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Kannada:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap');
+ 
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
-
+ 
 :root {
   --navy: #0a0f2e;
   --navy-mid: #111a45;
@@ -20,42 +21,42 @@
   --text-secondary: #475569;
   --border: #e2e8f0;
 }
-
+ 
 body {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'DM Sans', 'Noto Sans Kannada', 'Noto Sans Devanagari', sans-serif;
   background-color: var(--surface);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
 }
-
+ 
 .font-display {
-  font-family: 'Fraunces', serif;
+  font-family: 'Fraunces', 'Noto Sans Kannada', 'Noto Sans Devanagari', serif;
 }
-
+ 
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(24px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-
+ 
 @keyframes fadeIn {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-
+ 
 @keyframes shimmer {
   0%   { background-position: -200% center; }
   100% { background-position: 200% center; }
 }
-
+ 
 .animate-fade-up {
   animation: fadeUp 0.6s ease forwards;
 }
-
+ 
 .animate-fade-up-delay-1 { animation: fadeUp 0.6s ease 0.1s forwards; opacity: 0; }
 .animate-fade-up-delay-2 { animation: fadeUp 0.6s ease 0.2s forwards; opacity: 0; }
 .animate-fade-up-delay-3 { animation: fadeUp 0.6s ease 0.3s forwards; opacity: 0; }
 .animate-fade-up-delay-4 { animation: fadeUp 0.6s ease 0.4s forwards; opacity: 0; }
-
+ 
 .shimmer-text {
   background: linear-gradient(90deg, var(--amber) 0%, var(--amber-light) 40%, var(--amber) 100%);
   background-size: 200% auto;
@@ -65,14 +66,14 @@ body {
   animation: shimmer 3s linear infinite;
   font-weight: 900;
 }
-
+ 
 .hero-bg {
   background: 
     radial-gradient(ellipse at 20% 50%, rgba(245,158,11,0.08) 0%, transparent 60%),
     radial-gradient(ellipse at 80% 20%, rgba(99,102,241,0.1) 0%, transparent 50%),
     linear-gradient(135deg, #0a0f2e 0%, #111a45 50%, #0f172a 100%);
 }
-
+ 
 .card-hover {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
@@ -80,7 +81,7 @@ body {
   transform: translateY(-4px);
   box-shadow: 0 20px 40px rgba(10,15,46,0.12);
 }
-
+ 
 .btn-primary {
   background: var(--amber);
   color: var(--navy);
@@ -97,7 +98,7 @@ body {
   transform: translateY(-1px);
   box-shadow: 0 8px 24px rgba(245,158,11,0.35);
 }
-
+ 
 .btn-outline {
   border: 1.5px solid rgba(255,255,255,0.3);
   color: white;
@@ -113,12 +114,12 @@ body {
   border-color: rgba(255,255,255,0.7);
   background: rgba(255,255,255,0.08);
 }
-
+ 
 .dot-pattern {
   background-image: radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px);
   background-size: 28px 28px;
 }
-
+ 
 .stat-card {
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.1);
@@ -127,7 +128,7 @@ body {
   text-align: center;
   backdrop-filter: blur(8px);
 }
-
+ 
 .feature-card {
   background: white;
   border: 1px solid var(--border);
@@ -140,7 +141,7 @@ body {
   box-shadow: 0 0 0 1px var(--amber), 0 16px 32px rgba(245,158,11,0.08);
   transform: translateY(-2px);
 }
-
+ 
 .step-number {
   width: 56px;
   height: 56px;
@@ -155,7 +156,7 @@ body {
   font-weight: 700;
   margin: 0 auto 1.25rem;
 }
-
+ 
 .tag-pill {
   background: rgba(10,15,46,0.06);
   border: 1px solid rgba(10,15,46,0.1);
@@ -172,3 +173,12 @@ body {
   color: var(--amber);
   border-color: var(--navy);
 }
+ 
+/* ── Multi-language support ──
+   Kannada and Hindi letters are slightly taller than English,
+   so give them a little more line spacing to stay readable. */
+html[lang="kn"] body,
+html[lang="hi"] body {
+  line-height: 1.6;
+}
+ 
