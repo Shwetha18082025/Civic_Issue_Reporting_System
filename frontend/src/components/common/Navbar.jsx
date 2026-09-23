@@ -161,16 +161,16 @@ export default function Navbar() {
             </div>
 
             <span
-              style={{
-                fontFamily: 'Fraunces, serif',
-                fontSize: '1.3rem',
-                fontWeight: 700,
-                color: 'white',
-                letterSpacing: '-0.02em',
-              }}
-            >
-              CivicReport
-            </span>
+  style={{
+    fontFamily: 'Fraunces, serif',
+    fontSize: '1.3rem',
+    fontWeight: 700,
+    color: 'white',
+    letterSpacing: '-0.02em',
+  }}
+>
+  {t('brand.name')}
+</span>
           </Link>
 
 

@@ -1,5 +1,8 @@
 {
   "language": { "label": "Language" },
+   "brand": {
+  "name": "CivicReport"
+},
   "nav": {
     "home": "Home",
     "report": "Report Issue",
