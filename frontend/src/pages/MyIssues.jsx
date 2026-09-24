@@ -2,20 +2,45 @@ import { useEffect, useState } from 'react'
 import { useLocation, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useTranslation } from 'react-i18next'
 
 const statusColors = {
-  pending:     { bg: '#fef3c7', color: '#92400e', label: 'Pending' },
-  assigned:    { bg: '#dbeafe', color: '#1e40af', label: 'Assigned' },
-  in_progress: { bg: '#e0e7ff', color: '#3730a3', label: 'In Progress' },
-  resolved:    { bg: '#dcfce7', color: '#166534', label: 'Resolved' },
-  rejected:    { bg: '#fee2e2', color: '#991b1b', label: 'Rejected' },
-  duplicate:   { bg: '#f1f5f9', color: '#475569', label: 'Duplicate' },
+  pending: {
+    bg: '#fef3c7',
+    color: '#92400e',
+    label: 'Pending',
+  },
+  assigned: {
+    bg: '#dbeafe',
+    color: '#1e40af',
+    label: 'Assigned',
+  },
+  in_progress: {
+    bg: '#e0e7ff',
+    color: '#3730a3',
+    label: 'In Progress',
+  },
+  resolved: {
+    bg: '#dcfce7',
+    color: '#166534',
+    label: 'Resolved',
+  },
+  rejected: {
+    bg: '#fee2e2',
+    color: '#991b1b',
+    label: 'Rejected',
+  },
+  duplicate: {
+    bg: '#f1f5f9',
+    color: '#475569',
+    label: 'Duplicate',
+  },
 }
 
 const priorityColors = {
-  low:      '#22c55e',
-  medium:   '#f59e0b',
-  high:     '#ef4444',
+  low: '#22c55e',
+  medium: '#f59e0b',
+  high: '#ef4444',
   critical: '#7c3aed',
 }
 
@@ -23,6 +48,7 @@ export default function MyIssues() {
   const { user } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+  const { t } = useTranslation()
 
   const [issues, setIssues] = useState([])
   const [loading, setLoading] = useState(true)
@@ -56,10 +82,7 @@ export default function MyIssues() {
         })
 
       if (error) {
-        console.error(
-          'Error loading issues:',
-          error
-        )
+        console.error('Error loading issues:', error)
       }
 
       setIssues(data || [])
@@ -87,7 +110,9 @@ export default function MyIssues() {
     }
 
     const confirmed = window.confirm(
-      `Are you sure you want to delete "${issue.title}"?\n\nThis action cannot be undone.`
+      `${t('issues.deleteConfirmTitle', {
+        title: issue.title,
+      })}\n\n${t('issues.deleteConfirmWarning')}`
     )
 
     if (!confirmed) {
@@ -98,7 +123,7 @@ export default function MyIssues() {
       setDeletingId(issueId)
 
       // ---------------------------------------------------
-      // 1. Delete issue images records
+      // 1. Delete issue image records
       // ---------------------------------------------------
       const {
         error: imageRowsError,
@@ -181,7 +206,7 @@ export default function MyIssues() {
 
       alert(
         error.message ||
-        'Unable to delete the issue. Please try again.'
+        t('issues.deleteError')
       )
     } finally {
       setDeletingId(null)
@@ -208,7 +233,7 @@ export default function MyIssues() {
             fontSize: '1rem',
           }}
         >
-          Loading your issues...
+          {t('issues.loading')}
         </p>
       </div>
     )
@@ -255,7 +280,7 @@ export default function MyIssues() {
                 color: 'white',
               }}
             >
-              My Issues
+              {t('issues.myIssues')}
             </h1>
 
             <p
@@ -266,11 +291,11 @@ export default function MyIssues() {
                   '0.25rem',
               }}
             >
-              {issues.length} issue
+              {issues.length}{' '}
               {issues.length !== 1
-                ? 's'
-                : ''}{' '}
-              reported
+                ? t('issues.issues')
+                : t('issues.issue')}{' '}
+              {t('issues.reported')}
             </p>
           </div>
 
@@ -290,7 +315,7 @@ export default function MyIssues() {
                 'nowrap',
             }}
           >
-            + Report New
+            + {t('issues.reportNew')}
           </Link>
         </div>
       </div>
@@ -354,7 +379,7 @@ export default function MyIssues() {
                   '0.5rem',
               }}
             >
-              No issues yet
+              {t('issues.noIssues')}
             </h2>
 
             <p
@@ -364,9 +389,7 @@ export default function MyIssues() {
                   '2rem',
               }}
             >
-              Be the first to report
-              a civic issue in your
-              area.
+              {t('issues.beFirst')}
             </p>
 
             <Link
@@ -384,8 +407,7 @@ export default function MyIssues() {
                 fontWeight: 700,
               }}
             >
-              Report Your First
-              Issue →
+              {t('issues.reportFirst')} →
             </Link>
           </div>
         ) : (
@@ -531,7 +553,10 @@ export default function MyIssues() {
                             '9999px',
                         }}
                       >
-                        {status.label}
+                        {t(
+                          `status.${issue.status}`,
+                          status.label
+                        )}
                       </span>
 
                       <span
@@ -559,7 +584,10 @@ export default function MyIssues() {
                             'capitalize',
                         }}
                       >
-                        {issue.priority}
+                        {t(
+                          `priority.${issue.priority}`,
+                          issue.priority
+                        )}
                       </span>
                     </div>
 
@@ -598,7 +626,7 @@ export default function MyIssues() {
                       {' · '}
                       {issue.city ||
                         issue.ward ||
-                        'Location not set'}
+                        t('issues.locationNotSet')}
                       {' · '}
                       {new Date(
                         issue.created_at
@@ -627,7 +655,9 @@ export default function MyIssues() {
                       paddingTop:
                         '0.2rem',
                     }}
-                    title="View issue"
+                    title={t(
+                      'issues.viewIssue'
+                    )}
                   >
                     →
                   </Link>
@@ -641,6 +671,7 @@ export default function MyIssues() {
                     onClick={e => {
                       e.preventDefault()
                       e.stopPropagation()
+
                       handleDeleteIssue(
                         issue.id
                       )
@@ -671,8 +702,12 @@ export default function MyIssues() {
                     }}
                   >
                     {isDeleting
-                      ? 'Deleting...'
-                      : '🗑️ Delete'}
+                      ? t(
+                          'issues.deleting'
+                        )
+                      : `🗑️ ${t(
+                          'issues.delete'
+                        )}`}
                   </button>
 
                 </div>

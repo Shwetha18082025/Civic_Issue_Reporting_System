@@ -86,5 +86,24 @@
     "street_light": "Street light",
     "water_leak": "Water leak",
     "other": "Other"
-  }
+  },
+   "issues": {
+  "myIssues": "My Issues",
+  "issue": "issue",
+  "issues": "issues",
+  "reported": "reported",
+  "reportNew": "Report New",
+  "noIssues": "No issues yet",
+  "beFirst": "Be the first to report a civic issue in your area.",
+  "reportFirst": "Report Your First Issue",
+  "locationNotSet": "Location not set",
+  "viewIssue": "View issue",
+  "delete": "Delete",
+  "deleting": "Deleting...",
+  "deleteConfirmTitle": "Are you sure you want to delete {{title}}?",
+  "deleteConfirmWarning": "This action cannot be undone.",
+  "deleteError": "Unable to delete the issue. Please try again.",
+  "loading": "Loading your issues..."
+}
+  
 }
