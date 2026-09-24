@@ -116,6 +116,44 @@ useEffect(() => {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
+  // Realtime: immediately remove an issue from the authority dashboard
+  // when a citizen deletes it from the Citizen Portal.
+  useEffect(() => {
+    const channel = supabase
+      .channel('authority-issues-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'issues',
+        },
+        (payload) => {
+          const deletedId = payload.old?.id
+
+          if (!deletedId) return
+
+          console.log('🗑️ Issue deleted from Supabase:', deletedId)
+
+          setIssues(prevIssues =>
+            prevIssues.filter(issue => issue.id !== deletedId)
+          )
+
+          // Close the modal if the deleted issue was open.
+          setSelected(current =>
+            current?.id === deletedId ? null : current
+          )
+        }
+      )
+      .subscribe((status) => {
+        console.log('Authority issues realtime:', status)
+      })
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [])
+
   async function handleUpdateIssue() {
     if (!selectedIssue) return
     setUpdating(true)
