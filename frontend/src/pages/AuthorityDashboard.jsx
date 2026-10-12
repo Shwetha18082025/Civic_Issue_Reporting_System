@@ -14,6 +14,8 @@ import {
 
 } from 'recharts'
 import * as XLSX from 'xlsx'
+import { useTranslation } from 'react-i18next'
+
 
 
 
@@ -132,6 +134,30 @@ export default function AuthorityDashboard() {
   const [filterWard, setFWard]     = useState('all')
 
   const [filterPriority, setFPri]  = useState('all')
+
+  const { t, i18n } = useTranslation()
+
+const monthNames = {
+  en: [
+    'January', 'February', 'March', 'April',
+    'May', 'June', 'July', 'August',
+    'September', 'October', 'November', 'December'
+  ],
+  kn: [
+    'ಜನವರಿ', 'ಫೆಬ್ರವರಿ', 'ಮಾರ್ಚ್', 'ಏಪ್ರಿಲ್',
+    'ಮೇ', 'ಜೂನ್', 'ಜುಲೈ', 'ಆಗಸ್ಟ್',
+    'ಸೆಪ್ಟೆಂಬರ್', 'ಅಕ್ಟೋಬರ್', 'ನವೆಂಬರ್', 'ಡಿಸೆಂಬರ್'
+  ],
+  hi: [
+    'जनवरी', 'फ़रवरी', 'मार्च', 'अप्रैल',
+    'मई', 'जून', 'जुलाई', 'अगस्त',
+    'सितंबर', 'अक्टूबर', 'नवंबर', 'दिसंबर'
+  ]
+}
+
+const currentMonths =
+  monthNames[i18n.resolvedLanguage?.split('-')[0]] ||
+  monthNames.en
 
 
 
@@ -870,11 +896,48 @@ useEffect(() => {
         {activeTab === 'analytics' && (
           <>
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16, marginBottom: 20 }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: '#1e293b', marginBottom: 12 }}>Government Audit Report</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#1e293b', marginBottom: 12 }}>{t('audit.title')}</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, alignItems: 'end' }}>
-                <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', fontWeight: 600 }}>Month
-                  <input type="month" value={reportMonth} onChange={e => setReportMonth(e.target.value)} style={{ padding: '9px 10px', border: '1px solid #cbd5e1', borderRadius: 8, font: 'inherit', color: '#0f172a' }} />
-                </label>
+            <label
+  style={{
+    display: 'grid',
+    gap: 6,
+    fontSize: 12,
+    color: '#475569',
+    fontWeight: 600
+  }}
+>
+  {t('audit.month', { defaultValue: 'Month' })}
+
+  <select
+    value={reportMonth}
+    onChange={(e) => setReportMonth(e.target.value)}
+    style={{
+      padding: '9px 10px',
+      border: '1px solid #cbd5e1',
+      borderRadius: 8,
+      background: '#fff',
+      color: '#0f172a'
+    }}
+  >
+    {Array.from({ length: 24 }, (_, index) => {
+      const date = new Date()
+      date.setDate(1)
+      date.setMonth(date.getMonth() - index)
+
+      const year = date.getFullYear()
+      const month = date.getMonth()
+      const value =
+        `${year}-${String(month + 1).padStart(2, '0')}`
+
+      return (
+        <option key={value} value={value}>
+          {currentMonths[month]} {year}
+        </option>
+      )
+    })}
+  </select>
+</label>
                 <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', fontWeight: 600 }}>Ward / Area
                   <select value={reportWard} onChange={e => setReportWard(e.target.value)} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#0f172a' }}>
                     <option value="all">All wards</option>{wards.map(ward => <option key={ward} value={ward}>{ward}</option>)}
@@ -891,7 +954,9 @@ useEffect(() => {
                   </select>
                 </label>
                 <button type="button" onClick={exportMonthlyExcel} disabled={exportingReport || !reportMonth} style={{ background: exportingReport ? '#64748b' : '#047857', color: '#fff', border: 'none', borderRadius: 8, padding: '11px 16px', fontWeight: 700, cursor: exportingReport ? 'wait' : 'pointer', minHeight: 40 }}>
-                  {exportingReport ? 'Preparing report…' : '📥 Generate Audit Report (.xlsx)'}
+                  {exportingReport
+  ? 'Preparing report…'
+  : `📥 ${t('audit.generate')}`}
                 </button>
               </div>
               <div style={{ fontSize: 12, color: '#64748b', marginTop: 10 }}>Exports a multi-sheet workbook with issue register, monthly totals, ward analysis, category/priority details, and available assignment/resolution history.</div>

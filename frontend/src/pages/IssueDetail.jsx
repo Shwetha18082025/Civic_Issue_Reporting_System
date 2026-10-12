@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import jsPDF from 'jspdf'
+import { useTranslation } from 'react-i18next'
 
 const STATUS_STYLE = {
   pending: {
@@ -79,6 +80,7 @@ export default function IssueDetail() {
   const [pdfLoading, setPdfLoading] = useState(false)
 
   const [activeImage, setActiveImage] = useState(0)
+  const { t } = useTranslation()
 
   useEffect(() => {
     fetchIssue()
@@ -1897,8 +1899,12 @@ export default function IssueDetail() {
               }}
             >
               {pdfLoading
-                ? '⏳ Generating PDF...'
-                : '📄 Download PDF'}
+  ? `⏳ ${t('issue.generatingPdf', {
+      defaultValue: 'Generating PDF...'
+    })}`
+  : `📄 ${t('issue.downloadPdf', {
+      defaultValue: 'Download PDF'
+    })}`}
             </button>
 
           </div>

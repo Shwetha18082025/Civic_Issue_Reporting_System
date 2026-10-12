@@ -80,6 +80,18 @@
     "Noise Pollution": "Noise Pollution",
     "Other": "Other"
   },
+   "audit": {
+    "title": "Government Audit Report",
+    "month": "Month",
+    "ward": "Ward / Village",
+    "zone": "Zone",
+    "status": "Status",
+    "allWards": "All Wards",
+    "allZones": "All Zones",
+    "allStatuses": "All Statuses",
+    "generate": "Generate Audit Report (.xlsx)",
+    "description": "Exports a multi-sheet workbook with issue register, monthly totals, ward analysis, category/priority details, and available assignment/resolution history."
+  },
   "ml": {
     "road_damage": "Road damage",
     "garbage": "Garbage",
@@ -87,6 +99,10 @@
     "water_leak": "Water leak",
     "other": "Other"
   },
+  "issue": {
+  "downloadPdf": "Download PDF",
+  "generatingPdf": "Generating PDF..."
+},
    "issues": {
   "myIssues": "My Issues",
   "issue": "issue",
@@ -103,7 +119,9 @@
   "deleteConfirmTitle": "Are you sure you want to delete {{title}}?",
   "deleteConfirmWarning": "This action cannot be undone.",
   "deleteError": "Unable to delete the issue. Please try again.",
-  "loading": "Loading your issues..."
+  "loading": "Loading your issues...",
+  "downloadPdf": "Download PDF",
+  "generatingPdf": "Generating PDF..."
 }
   
 }
