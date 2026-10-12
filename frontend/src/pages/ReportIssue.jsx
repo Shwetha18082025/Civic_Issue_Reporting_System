@@ -319,7 +319,7 @@ export default function ReportIssue() {
       }
 
       const res = await fetch(
-        'http://localhost:8000/predict',
+        `${import.meta.env.VITE_ML_URL || 'http://localhost:8000'}/predict`,
         {
           method: 'POST',
           body: form,

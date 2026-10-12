@@ -3,14 +3,12 @@
 # ===========================
 .env
 .env.*
-frontend/.env
 !.env.example
 
 # ===========================
-# NODE (frontend/backend)
+# NODE (frontend)
 # ===========================
 node_modules/
-frontend/node_modules/
 dist/
 dist-ssr/
 build/
@@ -24,7 +22,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 # ===========================
-# PYTHON / ML
+# PYTHON
 # ===========================
 __pycache__/
 *.pyc
@@ -34,13 +32,23 @@ venv/
 .venv/
 env/
 
-# ML model files
+# ===========================
+# ML
+# ===========================
+# trained model files (share separately, not via git)
 *.pkl
 *.joblib
 *.h5
 *.pt
 *.pth
 *.onnx
+
+# large image datasets and archives (the CSV files stay tracked)
+ml/data/**/*.jpg
+ml/data/**/*.jpeg
+ml/data/**/*.png
+ml/data/**/*.webp
+ml/data/**/*.zip
 
 # ===========================
 # CACHE / TEMP
@@ -59,7 +67,7 @@ Desktop.ini
 # ===========================
 # IDE / EDITORS
 # ===========================
-.vscode/
+.vscode/*
 !.vscode/extensions.json
 .idea/
 *.suo
@@ -74,11 +82,5 @@ Desktop.ini
 supabase/.branches
 supabase/.temp
 
-ml/venv/
-ml/__pycache__/
-ml/**/__pycache__/
-ml/data/raw/          # images are large, don't commit
-ml/data/processed/    # auto-generated
-ml/models/*.pt        # model weights are large — use Git LFS or share separately
-*.pyc
-.env
+!ml/image_model/*.pt
+!ml/text_model/*.pkl
