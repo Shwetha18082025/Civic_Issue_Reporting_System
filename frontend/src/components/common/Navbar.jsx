@@ -356,19 +356,9 @@ export default function Navbar() {
                 </Link>
 
 
-                {/* GET STARTED */}
+                
 
-                <Link
-                  to="/register"
-                  className="btn-primary"
-                  style={{
-                    fontSize: '0.9rem',
-                    padding: '0.5rem 1.25rem',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {t('nav.getStarted')}
-                </Link>
+                
               </>
             )}
           </div>
@@ -601,7 +591,8 @@ export default function Navbar() {
               display: none !important;
             }
 
-            .navbar-mobile-button {
+            .navbar-mo
+bile-button {
               display: block !important;
             }
           }
