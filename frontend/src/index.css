@@ -186,3 +186,16 @@ html[lang="hi"] body {
   line-height: 1.6;
 }
  
+*, *::before, *::after { box-sizing: border-box; }
+html, body { max-width: 100%; overflow-x: hidden; }
+img, video, canvas, svg { max-width: 100%; }
+
+@media (max-width: 768px) {
+  /* stack any multi-column grid that was set with inline styles */
+  [style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+  [style*="display: flex"], [style*="display:flex"] {
+    flex-wrap: wrap;
+  }
+}
