@@ -175,74 +175,99 @@ export default function ReportIssue() {
   // ---------------------------------------------------------
   // GPS location detection
   // ---------------------------------------------------------
-  function detectLocation() {
-    if (!navigator.geolocation) {
-      setError(
-        'Geolocation is not supported by your browser.'
-      )
-      return
-    }
+  
+function detectLocation() {
+  if (!navigator.geolocation) {
+    setError('Geolocation is not supported by your browser.')
+    return
+  }
 
-    setLocationLoading(true)
+  setLocationLoading(true)
+  setError('')
 
-    navigator.geolocation.getCurrentPosition(
-      async pos => {
-        const {
-          latitude,
-          longitude,
-        } = pos.coords
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const { latitude, longitude } = pos.coords
+
+      setFormData(prev => ({
+        ...prev,
+        latitude,
+        longitude,
+      }))
+
+      try {
+        const url = new URL(
+          'https://nominatim.openstreetmap.org/reverse'
+        )
+
+        url.searchParams.set('lat', latitude)
+        url.searchParams.set('lon', longitude)
+        url.searchParams.set('format', 'jsonv2')
+        url.searchParams.set('accept-language', 'en')
+
+        const res = await fetch(url.toString(), {
+          headers: {
+            Accept: 'application/json',
+          },
+        })
+
+        if (!res.ok) {
+          throw new Error(`Geocoding failed: ${res.status}`)
+        }
+
+        const data = await res.json()
+        const addr = data.address || {}
+
+        const address = [
+          addr.road,
+          addr.neighbourhood || addr.suburb,
+          addr.city || addr.town || addr.village,
+        ].filter(Boolean).join(', ')
+
+        const city =
+          addr.city ||
+          addr.town ||
+          addr.village ||
+          addr.municipality ||
+          ''
+
+        const ward =
+          addr.neighbourhood ||
+          addr.suburb ||
+          addr.city_district ||
+          addr.county ||
+          ''
 
         setFormData(prev => ({
           ...prev,
           latitude,
           longitude,
+          address: address || data.display_name || '',
+          city,
+          ward,
         }))
-
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`
-          )
-
-          const data = await res.json()
-          const addr = data.address
-
-          setFormData(prev => ({
-            ...prev,
-            address:
-              data.display_name
-                ?.split(',')
-                .slice(0, 3)
-                .join(',') || '',
-            city:
-              addr.city ||
-              addr.town ||
-              addr.village ||
-              '',
-            ward:
-              addr.suburb ||
-              addr.neighbourhood ||
-              addr.county ||
-              '',
-          }))
-        } catch {
-          // Coordinates are still saved
-        }
-
-        setLocationLoading(false)
-      },
-      () => {
+      } catch (error) {
+        console.error('Location lookup failed:', error)
         setError(
-          'Could not detect location. Please enter it manually.'
+          'Could not retrieve the address. You can enter it manually.'
         )
-
+      } finally {
         setLocationLoading(false)
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
       }
-    )
-  }
+    },
+    (error) => {
+      console.error('GPS error:', error)
+      setError('Could not detect location. Please enter it manually.')
+      setLocationLoading(false)
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 0,
+    }
+  )
+}
+
 
   // ---------------------------------------------------------
   // Upload images to Supabase Storage
