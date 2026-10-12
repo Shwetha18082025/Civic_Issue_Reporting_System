@@ -81,3 +81,6 @@ Desktop.ini
 # ===========================
 supabase/.branches
 supabase/.temp
+
+!ml/image_model/*.pt
+!ml/text_model/*.pkl
