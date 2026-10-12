@@ -37,17 +37,18 @@ export default function LivePhotoCapture({
       }
 
       const stream =
-        await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: {
-              ideal: 1280,
-            },
-            height: {
-              ideal: 720,
-            },
-          },
-          audio: false,
-        })
+  await navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: { ideal: 'environment' },
+      width: {
+        ideal: 1280,
+      },
+      height: {
+        ideal: 720,
+      },
+    },
+    audio: false,
+  })
 
       streamRef.current = stream
 
