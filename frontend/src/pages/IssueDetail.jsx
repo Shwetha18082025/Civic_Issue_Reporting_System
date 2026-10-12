@@ -853,22 +853,22 @@ export default function IssueDetail() {
       sectionTitle('Location / GPS Information')
 
       const locationInfo = [
-        ['Address', issue.address || 'Not available'],
-        ['Ward / Area', issue.ward || 'Not available'],
-        ['City', issue.city || 'Not available'],
-        [
-          'Latitude',
-          issue.latitude != null
-            ? String(issue.latitude)
-            : 'Not available'
-        ],
-        [
-          'Longitude',
-          issue.longitude != null
-            ? String(issue.longitude)
-            : 'Not available'
-        ],
-      ]
+  ['Address', issue.address || 'Not available'],
+  ['Ward / Area', issue.ward || 'Not available'],
+  ['City', issue.city || 'Not available'],
+  [
+    'Latitude',
+    issue.latitude != null
+      ? String(issue.latitude)
+      : 'Not available'
+  ],
+  [
+    'Longitude',
+    issue.longitude != null
+      ? String(issue.longitude)
+      : 'Not available'
+  ],
+]
 
 
       doc.setFontSize(9)
