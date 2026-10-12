@@ -1,890 +1,1976 @@
 import { useState, useEffect, useCallback } from 'react'
+
 import { useNavigate } from 'react-router-dom'
+
 import { supabase } from '../lib/supabase'
+
 import { useAuth } from '../context/AuthContext'
+
 import {
+
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+
   PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend
+
 } from 'recharts'
+import * as XLSX from 'xlsx'
+
+
 
 const statusColors = {
+
   pending:     { bg: '#fef3c7', color: '#92400e', dot: '#f59e0b', label: 'Pending' },
+
   assigned:    { bg: '#e0e7ff', color: '#3730a3', dot: '#6366f1', label: 'Assigned' },
+
   in_progress: { bg: '#dbeafe', color: '#1e40af', dot: '#3b82f6', label: 'In Progress' },
+
   resolved:    { bg: '#d1fae5', color: '#065f46', dot: '#10b981', label: 'Resolved' },
+
   rejected:    { bg: '#fee2e2', color: '#991b1b', dot: '#ef4444', label: 'Rejected' },
+
 }
 
+
+
 const priorityColors = {
+
   low:      { bg: '#f0fdf4', color: '#166534' },
+
   medium:   { bg: '#fefce8', color: '#854d0e' },
+
   high:     { bg: '#fff7ed', color: '#9a3412' },
+
   critical: { bg: '#fef2f2', color: '#991b1b' },
+
 }
+
+
 
 const CHART_COLORS = ['#6366f1','#f59e0b','#3b82f6','#10b981','#ef4444','#8b5cf6','#ec4899','#14b8a6']
 
+
+
 function Toast({ message, type, onClose }) {
+
   useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t) }, [onClose])
+
   return (
+
     <div style={{
+
       position:'fixed', bottom:24, right:24, zIndex:9999,
+
       background: type==='error' ? '#fee2e2' : '#d1fae5',
+
       color: type==='error' ? '#991b1b' : '#065f46',
+
       border: `1px solid ${type==='error' ? '#fca5a5' : '#6ee7b7'}`,
+
       borderRadius:10, padding:'12px 20px', fontFamily:'sans-serif',
+
       fontWeight:500, fontSize:14, boxShadow:'0 4px 20px rgba(0,0,0,0.1)',
+
       display:'flex', alignItems:'center', gap:10, maxWidth:360,
+
     }}>
+
       <span>{type==='error' ? '✗' : '✓'}</span>{message}
+
     </div>
+
   )
+
 }
 
+
+
 export default function AuthorityDashboard() {
+
   const { user, profile, signOut } = useAuth()
+
   const navigate = useNavigate()
 
+
+
   const [issues, setIssues]           = useState([])
+
   const [categories, setCategories]   = useState([])
+
   const [officers, setOfficers]       = useState([])
+
   const [reporters, setReporters]     = useState({})
+
   const [loading, setLoading]         = useState(true)
+
   const [selectedIssue, setSelected]  = useState(null)
+
   const [newStatus, setNewStatus]     = useState('')
+
   const [assignTo, setAssignTo]       = useState('')
+
   const [orgs, setOrgs]               = useState([])   // departments + NGOs
+
   const [assignOrg, setAssignOrg]     = useState('')
+
   const [orgNote, setOrgNote]         = useState('')
+
   const [updatingStatus, setUpdating] = useState(false)
+
   const [toast, setToast]             = useState(null)
+
   const [activeTab, setActiveTab]     = useState('issues')
 
+
+
   const [search, setSearch]        = useState('')
+
   const [filterStatus, setFStatus] = useState('all')
+
   const [filterCat, setFCat]       = useState('all')
+
   const [filterWard, setFWard]     = useState('all')
+
   const [filterPriority, setFPri]  = useState('all')
+
+
 
   const showToast = (msg, type='success') => setToast({ message: msg, type })
 
+
+
   // Allow both admin and officer roles
+
 useEffect(() => {
+
   if (profile && !['admin', 'officer'].includes(profile.role)) {
+
     navigate('/login')
+
   }
+
 }, [profile, navigate])
 
+
+
   const fetchAll = useCallback(async () => {
+
     setLoading(true)
+
     try {
+
       const [
+
         { data: issuesData, error: ie },
+
         { data: catsData },
+
         { data: officersData },
+
         { data: profilesData },
+
       ] = await Promise.all([
+
         supabase.from('issues').select(`
+
           id, title, description, status, priority, ward, city, address,
+
           category_id, reported_by, assigned_to, upvotes, created_at, updated_at,
+
           latitude, longitude, ml_category, ml_confidence, assigned_org,
+
           categories(name, icon), issue_images(image_url)
+
         `).order('created_at', { ascending: false }),
+
         supabase.from('categories').select('*'),
+
         supabase.from('profiles').select('id, full_name, role').in('role', ['admin', 'officer']),
+
         supabase.from('profiles').select('id, full_name'),
+
       ])
+
       if (ie) showToast('Failed to load: ' + ie.message, 'error')
+
       setIssues(issuesData || [])
+
       setCategories(catsData || [])
+
       setOfficers(officersData || [])
+
       const map = {}
+
       ;(profilesData || []).forEach(p => { map[p.id] = p.full_name })
+
       setReporters(map)
 
+
+
       // Departments + NGOs (loaded separately so the dashboard still works if this fails)
+
       const { data: orgsData, error: oe } = await supabase
+
         .from('organizations').select('*').eq('is_active', true).order('type').order('name')
+
       if (oe) console.warn('Organizations not loaded:', oe.message)
+
       setOrgs(orgsData || [])
+
     } catch(e) {
+
       showToast('Error: ' + e.message, 'error')
+
     } finally {
+
       setLoading(false)
+
     }
+
   }, [])
+
+
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
+
+
   // Realtime: immediately remove an issue from the authority dashboard
+
   // when a citizen deletes it from the Citizen Portal.
+
   useEffect(() => {
+
     const channel = supabase
+
       .channel('authority-issues-realtime')
+
       .on(
+
         'postgres_changes',
+
         {
+
           event: 'DELETE',
+
           schema: 'public',
+
           table: 'issues',
+
         },
+
         (payload) => {
+
           const deletedId = payload.old?.id
+
+
 
           if (!deletedId) return
 
+
+
           console.log('🗑️ Issue deleted from Supabase:', deletedId)
 
+
+
           setIssues(prevIssues =>
+
             prevIssues.filter(issue => issue.id !== deletedId)
+
           )
+
+
 
           // Close the modal if the deleted issue was open.
+
           setSelected(current =>
+
             current?.id === deletedId ? null : current
+
           )
+
         }
+
       )
+
       .subscribe((status) => {
+
         console.log('Authority issues realtime:', status)
+
       })
 
+
+
     return () => {
+
       supabase.removeChannel(channel)
+
     }
+
   }, [])
 
+
+
   async function handleUpdateIssue() {
+
     if (!selectedIssue) return
+
     setUpdating(true)
+
     try {
+
       const orgChanged = (assignOrg || null) !== (selectedIssue.assigned_org || null)
+
       const org = orgs.find(o => o.id === assignOrg)
+
       // Assigning a pending issue to a team moves it to "assigned"
+
       const finalStatus = orgChanged && org && newStatus === 'pending' ? 'assigned' : newStatus
 
+
+
       const payload = {
+
         status: finalStatus,
+
         assigned_to: assignTo || null,
+
         updated_at: new Date().toISOString(),
+
       }
+
       if (orgChanged) {
+
         payload.assigned_org = assignOrg || null
+
         payload.assigned_org_at = assignOrg ? new Date().toISOString() : null
+
       }
+
       if (finalStatus === 'resolved') payload.resolved_at = new Date().toISOString()
+
       const { error } = await supabase.from('issues').update(payload).eq('id', selectedIssue.id)
+
       if (error) throw error
 
+
+
       // Side effects — never block the save if one of these fails
+
       if (orgChanged && org) {
+
         try {
+
           await supabase.from('audit_logs').insert({
+
             issue_id: selectedIssue.id,
+
             changed_by: user?.id,
+
             old_status: selectedIssue.status,
+
             new_status: finalStatus,
+
             note: `Assigned to ${org.name} (${org.type === 'ngo' ? 'NGO' : 'Department'})`,
+
           })
+
+
 
           if (selectedIssue.reported_by) {
+
             await supabase.from('notifications').insert({
+
               user_id: selectedIssue.reported_by,
+
               issue_id: selectedIssue.id,
+
               message: `Your issue "${selectedIssue.title}" has been assigned to ${org.name}.`,
+
               type: 'assignment',
+
             })
+
           }
+
         } catch (sideErr) {
+
           console.warn('Assignment extras failed:', sideErr)
+
         }
+
       }
+
+
 
       // Save the citizen note independently, even if the department/NGO
+
       // was not changed.
+
       if (orgNote.trim()) {
+
         try {
+
           const { error: noteError } = await supabase.from('comments').insert({
+
             issue_id: selectedIssue.id,
+
             user_id: user?.id,
+
             content: orgNote.trim(),
+
             is_official: true,
+
           })
 
+
+
           if (noteError) {
+
             console.warn('Citizen note could not be saved:', noteError.message)
+
           }
+
         } catch (noteErr) {
+
           console.warn('Citizen note save failed:', noteErr)
+
         }
+
       }
 
+
+
       showToast(orgChanged && org ? `Issue assigned to ${org.name}!` : 'Issue updated!')
+
       await fetchAll()
+
       closeModal()
+
     } catch(e) { showToast(e.message, 'error') }
+
     setUpdating(false)
+
   }
+
+
 
   function openModal(issue) { setSelected(issue); setNewStatus(issue.status); setAssignTo(issue.assigned_to || ''); setAssignOrg(issue.assigned_org || ''); setOrgNote('') }
+
   function closeModal() { setSelected(null); setNewStatus(''); setAssignTo(''); setAssignOrg(''); setOrgNote('') }
 
+
+
   // AI suggestion: first department (then NGO) that handles the ML-predicted category
+
   function suggestedOrgFor(issue) {
+
     if (!issue?.ml_category) return null
+
     const matches = orgs.filter(o => (o.handles || []).includes(issue.ml_category))
+
     return matches.find(o => o.type === 'department') || matches[0] || null
+
   }
+
   const orgName = (id) => orgs.find(o => o.id === id)?.name
 
+
+
   const wards = [...new Set(issues.map(i => i.ward).filter(Boolean))]
+
   const filtered = issues.filter(i => {
+
     const ms = !search || [i.title, i.description, i.address, i.city].some(f => f?.toLowerCase().includes(search.toLowerCase()))
+
     return ms &&
+
       (filterStatus === 'all' || i.status === filterStatus) &&
+
       (filterCat === 'all' || String(i.category_id) === filterCat) &&
+
       (filterWard === 'all' || i.ward === filterWard) &&
+
       (filterPriority === 'all' || i.priority === filterPriority)
+
   })
 
+
+
   const stats = {
+
     total:       issues.length,
+
     pending:     issues.filter(i => i.status === 'pending').length,
+
     in_progress: issues.filter(i => i.status === 'in_progress').length,
+
     resolved:    issues.filter(i => i.status === 'resolved').length,
+
     critical:    issues.filter(i => i.priority === 'critical').length,
+
   }
+
   const resRate = stats.total > 0 ? Math.round((stats.resolved / stats.total) * 100) : 0
 
+
+
   const categoryChartData = categories.map(cat => ({
+
     name: cat.name,
+
     count: issues.filter(i => i.category_id === cat.id).length,
+
   })).filter(d => d.count > 0).sort((a,b) => b.count - a.count)
 
+
+
   const statusChartData = Object.entries(statusColors).map(([k,v]) => ({
+
     name: v.label,
+
     value: issues.filter(i => i.status === k).length,
+
     color: v.dot,
+
   })).filter(d => d.value > 0)
 
+
+
   const wardChartData = wards.map(ward => ({
+
     ward,
+
     total:    issues.filter(i => i.ward === ward).length,
+
     resolved: issues.filter(i => i.ward === ward && i.status === 'resolved').length,
+
     pending:  issues.filter(i => i.ward === ward && i.status === 'pending').length,
+
   })).sort((a,b) => b.total - a.total).slice(0, 8)
 
+
+
   const monthlyChartData = (() => {
+
     const m = {}
+
     issues.forEach(issue => {
+
       const key = new Date(issue.created_at).toLocaleString('en-IN', { month: 'short', year: '2-digit' })
+
       m[key] = (m[key] || 0) + 1
+
     })
+
     return Object.entries(m).map(([month, count]) => ({ month, count })).slice(-6)
+
   })()
+
+
+
+  // Audit report filters. Defaults to September 2026 as requested.
+  const [reportMonth, setReportMonth] = useState('2026-09')
+  const [reportWard, setReportWard] = useState('all')
+  const [reportCategory, setReportCategory] = useState('all')
+  const [reportStatus, setReportStatus] = useState('all')
+  const [exportingReport, setExportingReport] = useState(false)
+
+  const exportMonthlyExcel = async () => {
+    setExportingReport(true)
+    try {
+      // Fetch every issue in pages instead of relying on the dashboard's loaded rows.
+      const pageSize = 1000
+      let allIssues = []
+      for (let from = 0; ; from += pageSize) {
+        const { data, error } = await supabase.from('issues').select(`
+          id, title, description, status, priority, ward, city, address,
+          category_id, reported_by, assigned_to, upvotes, created_at, updated_at,
+          latitude, longitude, ml_category, ml_confidence, assigned_org,
+          assigned_org_at, resolved_at, categories(name, icon), issue_images(image_url)
+        `).order('created_at', { ascending: true }).range(from, from + pageSize - 1)
+        if (error) throw error
+        allIssues = allIssues.concat(data || [])
+        if (!data || data.length < pageSize) break
+      }
+
+      const start = new Date(`${reportMonth}-01T00:00:00`)
+      const end = new Date(start.getFullYear(), start.getMonth() + 1, 1)
+      let filtered = allIssues.filter(issue => {
+        if (!issue.created_at) return false
+        const created = new Date(issue.created_at)
+        if (Number.isNaN(created.getTime()) || created < start || created >= end) return false
+        if (reportWard !== 'all' && issue.ward !== reportWard) return false
+        const categoryName = issue.categories?.name || ''
+        if (reportCategory !== 'all' && categoryName !== reportCategory) return false
+        if (reportStatus !== 'all' && issue.status !== reportStatus) return false
+        return true
+      })
+
+      if (!filtered.length) {
+        showToast('No issues match the selected audit filters.', 'error')
+        return
+      }
+
+      const statusLabel = value => ({ pending: 'Pending', assigned: 'Assigned', in_progress: 'In Progress', resolved: 'Resolved', rejected: 'Rejected' }[value] || value || '')
+      const categoryOf = issue => issue.categories?.name || ''
+      const imageOf = issue => (issue.issue_images || []).map(image => image.image_url).filter(Boolean).join(' | ')
+      const fmtDate = value => value ? new Date(value).toISOString() : ''
+      const issueIds = filtered.map(issue => issue.id).filter(Boolean)
+
+      // Optional supporting tables: if unavailable due to schema/RLS, export the issue data and note the limitation.
+      let auditLogs = []
+      let comments = []
+      let historyNotes = []
+      const optionalWarnings = []
+      for (let i = 0; i < issueIds.length; i += 100) {
+        const batch = issueIds.slice(i, i + 100)
+        const [logsResult, commentsResult] = await Promise.all([
+          supabase.from('audit_logs').select('*').in('issue_id', batch),
+          supabase.from('comments').select('*').in('issue_id', batch),
+        ])
+        if (logsResult.error) optionalWarnings.push(`audit_logs: ${logsResult.error.message}`)
+        else auditLogs = auditLogs.concat(logsResult.data || [])
+        if (commentsResult.error) optionalWarnings.push(`comments: ${commentsResult.error.message}`)
+        else comments = comments.concat(commentsResult.data || [])
+      }
+
+      const byId = Object.fromEntries(filtered.map(issue => [String(issue.id), issue]))
+      const workbook = XLSX.utils.book_new()
+      const addSheet = (name, rows, widths) => {
+        const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Message: 'No records available for this selection' }])
+        if (widths) ws['!cols'] = widths.map(wch => ({ wch }))
+        ws['!autofilter'] = { ref: ws['!ref'] || 'A1:A1' }
+        XLSX.utils.book_append_sheet(workbook, ws, name)
+      }
+
+      const countStatus = status => filtered.filter(issue => issue.status === status).length
+      const summary = [
+        { Metric: 'Report Month', Value: reportMonth },
+        { Metric: 'Ward Filter', Value: reportWard },
+        { Metric: 'Category Filter', Value: reportCategory },
+        { Metric: 'Status Filter', Value: reportStatus === 'all' ? 'All statuses' : statusLabel(reportStatus) },
+        { Metric: 'Complaints in report', Value: filtered.length },
+        { Metric: 'Pending', Value: countStatus('pending') },
+        { Metric: 'Assigned', Value: countStatus('assigned') },
+        { Metric: 'In Progress', Value: countStatus('in_progress') },
+        { Metric: 'Resolved', Value: countStatus('resolved') },
+        { Metric: 'Rejected', Value: countStatus('rejected') },
+        { Metric: 'Resolution rate (%)', Value: filtered.length ? Number((countStatus('resolved') / filtered.length * 100).toFixed(2)) : 0 },
+        { Metric: 'Generated at (UTC)', Value: new Date().toISOString() },
+        { Metric: 'History export note', Value: optionalWarnings.length ? `Some history data could not be read: ${optionalWarnings.join(' | ')}` : 'History sheets include records returned by the audit_logs and comments tables.' },
+      ]
+      addSheet('Audit Summary', summary, [30, 90])
+
+      addSheet('Issue Register', filtered.map(issue => ({
+        'Issue ID': issue.id,
+        Title: issue.title || '',
+        Description: issue.description || '',
+        'Reported At': fmtDate(issue.created_at),
+        'Last Updated At': fmtDate(issue.updated_at),
+        Status: statusLabel(issue.status),
+        Priority: issue.priority || '',
+        Category: categoryOf(issue),
+        Ward: issue.ward || '',
+        City: issue.city || '',
+        Address: issue.address || '',
+        Latitude: issue.latitude ?? '',
+        Longitude: issue.longitude ?? '',
+        'Reporter ID': issue.reported_by || '',
+        'Assigned Officer ID': issue.assigned_to || '',
+        'Assigned Organization ID': issue.assigned_org || '',
+        'Organization Assigned At': fmtDate(issue.assigned_org_at),
+        'Resolved At': fmtDate(issue.resolved_at),
+        Upvotes: issue.upvotes ?? 0,
+        'AI Category': issue.ml_category || '',
+        'AI Confidence': issue.ml_confidence ?? '',
+        'Image Evidence URLs': imageOf(issue),
+      })), [14, 26, 45, 24, 24, 16, 14, 20, 18, 18, 32, 14, 14, 38, 38, 38, 24, 24, 12, 20, 16, 55])
+
+      const monthly = {}
+      allIssues.forEach(issue => {
+        if (!issue.created_at) return
+        const d = new Date(issue.created_at)
+        if (Number.isNaN(d.getTime())) return
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+        if (!monthly[key]) monthly[key] = { Month: key, Total: 0, Pending: 0, Assigned: 0, 'In Progress': 0, Resolved: 0, Rejected: 0 }
+        monthly[key].Total += 1
+        const label = { pending: 'Pending', assigned: 'Assigned', in_progress: 'In Progress', resolved: 'Resolved', rejected: 'Rejected' }[issue.status]
+        if (label) monthly[key][label] += 1
+      })
+      addSheet('Monthly Analysis', Object.values(monthly).sort((a, b) => a.Month.localeCompare(b.Month)), [14, 12, 12, 12, 16, 12, 12])
+
+      const groupBy = (keyFn, label) => {
+        const groups = {}
+        filtered.forEach(issue => {
+          const key = keyFn(issue) || 'Not specified'
+          if (!groups[key]) groups[key] = { [label]: key, Total: 0, Pending: 0, Assigned: 0, 'In Progress': 0, Resolved: 0, Rejected: 0 }
+          groups[key].Total += 1
+          const status = { pending: 'Pending', assigned: 'Assigned', in_progress: 'In Progress', resolved: 'Resolved', rejected: 'Rejected' }[issue.status]
+          if (status) groups[key][status] += 1
+        })
+        return Object.values(groups).sort((a, b) => b.Total - a.Total)
+      }
+      addSheet('Area Ward Analysis', groupBy(issue => issue.ward, 'Ward / Area'), [28, 12, 12, 12, 16, 12, 12])
+      addSheet('Category Priority', filtered.map(issue => ({ 'Issue ID': issue.id, Category: categoryOf(issue), Priority: issue.priority || '', Status: statusLabel(issue.status), Ward: issue.ward || '', 'Reported At': fmtDate(issue.created_at) })), [16, 22, 16, 16, 24, 24])
+
+      const historyRows = [
+        ...auditLogs.map(log => ({
+          'Record Type': 'Audit Log', 'Issue ID': log.issue_id || '', 'Event Date': fmtDate(log.created_at || log.updated_at),
+          'Changed By ID': log.changed_by || '', 'Old Status': statusLabel(log.old_status), 'New Status': statusLabel(log.new_status),
+          Note: log.note || '', 'Official Note': '', 'Official Comment': '',
+        })),
+        ...comments.map(comment => ({
+          'Record Type': comment.is_official ? 'Official Comment' : 'Comment', 'Issue ID': comment.issue_id || '',
+          'Event Date': fmtDate(comment.created_at || comment.updated_at), 'Changed By ID': comment.user_id || '',
+          'Old Status': '', 'New Status': '', Note: '', 'Official Note': comment.is_official ? 'Yes' : 'No', 'Official Comment': comment.content || '',
+        })),
+      ].filter(row => byId[String(row['Issue ID'])])
+        .sort((a, b) => String(a['Event Date']).localeCompare(String(b['Event Date'])))
+      addSheet('Assignment Resolution History', historyRows, [20, 16, 26, 38, 16, 16, 50, 16, 55])
+
+      XLSX.writeFile(workbook, `CivicReport_Audit_${reportMonth}.xlsx`)
+      showToast(`Audit workbook downloaded (${filtered.length} issues, 6 sheets).`)
+    } catch (error) {
+      console.error('Audit export failed:', error)
+      showToast(`Audit export failed: ${error.message || 'Unknown error'}`, 'error')
+    } finally {
+      setExportingReport(false)
+    }
+  }
 
   const handleSignOut = async () => { await signOut(); navigate('/login') }
 
+
+
   return (
+
     <div style={{ minHeight: '100vh', background: '#f1f5f9', fontFamily: 'system-ui, sans-serif' }}>
 
+
+
       {/* NAV */}
+
       <nav style={{
+
         background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '0 24px', height: 60,
+
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+
         position: 'sticky', top: 0, zIndex: 100, boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+
       }}>
+
         <div style={{ fontWeight: 700, fontSize: 18, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 8 }}>
+
           🏛️ Authority Dashboard
+
         </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+
           <span style={{ background: '#f1f5f9', borderRadius: 20, padding: '4px 12px', fontSize: 13, color: '#475569', fontWeight: 500 }}>
+
             {profile?.role?.toUpperCase() || 'ADMIN'} · {profile?.full_name || user?.email}
+
           </span>
+
           <button onClick={handleSignOut} style={{
+
             background: 'none', border: '1px solid #e2e8f0', borderRadius: 8,
+
             padding: '6px 14px', fontSize: 13, color: '#64748b', cursor: 'pointer', fontWeight: 500,
+
           }}>Sign out</button>
+
         </div>
+
       </nav>
+
+
 
       <main style={{ maxWidth: 1500, margin: '0 auto', padding: '24px' }}>
 
+
+
         {/* STATS */}
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 16, marginBottom: 24 }}>
+
           {[
+
             { label: 'Total Issues',  value: stats.total,       color: '#1e293b', accent: '#6366f1', icon: '📋', sub: 'All time' },
+
             { label: 'Pending',       value: stats.pending,     color: '#92400e', accent: '#f59e0b', icon: '⏳', sub: 'Awaiting action' },
+
             { label: 'In Progress',   value: stats.in_progress, color: '#1e40af', accent: '#3b82f6', icon: '🔧', sub: 'Being handled' },
+
             { label: 'Resolved',      value: stats.resolved,    color: '#065f46', accent: '#10b981', icon: '✅', sub: `${resRate}% rate` },
+
             { label: 'Critical',      value: stats.critical,    color: '#991b1b', accent: '#ef4444', icon: '🚨', sub: 'High priority' },
+
           ].map(({ label, value, color, accent, icon, sub }) => (
+
             <div key={label} style={{
+
               background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14,
+
               padding: '18px 20px', borderTop: `3px solid ${accent}`,
+
               boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+
             }}>
+
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+
                 <div style={{ fontSize: 30, fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
+
                 <span style={{ fontSize: 22 }}>{icon}</span>
+
               </div>
+
               <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, marginTop: 6 }}>{label}</div>
+
               <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{sub}</div>
+
             </div>
+
           ))}
+
         </div>
+
+
 
         {/* TABS */}
+
         <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: '#fff', borderRadius: 12, padding: 4, border: '1px solid #e2e8f0', width: 'fit-content' }}>
+
           {[{ id: 'issues', label: '📋 Issues Table' }, { id: 'analytics', label: '📊 Analytics' }].map(t => (
+
             <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
+
               padding: '8px 22px', borderRadius: 9, border: 'none',
+
               background: activeTab === t.id ? '#1e293b' : 'transparent',
+
               color: activeTab === t.id ? '#fff' : '#64748b',
+
               fontWeight: 600, fontSize: 14, cursor: 'pointer', transition: 'all 0.2s',
+
             }}>{t.label}</button>
+
           ))}
+
         </div>
 
+
+
         {/* ── ANALYTICS TAB ── */}
+
         {activeTab === 'analytics' && (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
-
-              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '22px 24px' }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: '#1e293b', marginBottom: 4 }}>Issues by Category</div>
-                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>Total reports per category</div>
-                {categoryChartData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={categoryChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                      <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} />
-                      <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
-                      <Tooltip />
-                      <Bar dataKey="count" name="Issues" radius={[6,6,0,0]}>
-                        {categoryChartData.map((_,i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : <div style={{ textAlign:'center', padding:40, color:'#94a3b8' }}>No data yet</div>}
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16, marginBottom: 20 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#1e293b', marginBottom: 12 }}>Government Audit Report</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, alignItems: 'end' }}>
+                <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', fontWeight: 600 }}>Month
+                  <input type="month" value={reportMonth} onChange={e => setReportMonth(e.target.value)} style={{ padding: '9px 10px', border: '1px solid #cbd5e1', borderRadius: 8, font: 'inherit', color: '#0f172a' }} />
+                </label>
+                <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', fontWeight: 600 }}>Ward / Area
+                  <select value={reportWard} onChange={e => setReportWard(e.target.value)} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#0f172a' }}>
+                    <option value="all">All wards</option>{wards.map(ward => <option key={ward} value={ward}>{ward}</option>)}
+                  </select>
+                </label>
+                <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', fontWeight: 600 }}>Category
+                  <select value={reportCategory} onChange={e => setReportCategory(e.target.value)} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#0f172a' }}>
+                    <option value="all">All categories</option>{categories.map(category => <option key={category.id} value={category.name}>{category.name}</option>)}
+                  </select>
+                </label>
+                <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', fontWeight: 600 }}>Status
+                  <select value={reportStatus} onChange={e => setReportStatus(e.target.value)} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#0f172a' }}>
+                    <option value="all">All statuses</option><option value="pending">Pending</option><option value="assigned">Assigned</option><option value="in_progress">In Progress</option><option value="resolved">Resolved</option><option value="rejected">Rejected</option>
+                  </select>
+                </label>
+                <button type="button" onClick={exportMonthlyExcel} disabled={exportingReport || !reportMonth} style={{ background: exportingReport ? '#64748b' : '#047857', color: '#fff', border: 'none', borderRadius: 8, padding: '11px 16px', fontWeight: 700, cursor: exportingReport ? 'wait' : 'pointer', minHeight: 40 }}>
+                  {exportingReport ? 'Preparing report…' : '📥 Generate Audit Report (.xlsx)'}
+                </button>
               </div>
-
-              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '22px 24px' }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: '#1e293b', marginBottom: 4 }}>Status Breakdown</div>
-                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>Distribution across all statuses</div>
-                {statusChartData.length > 0 ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                    <ResponsiveContainer width="55%" height={220}>
-                      <PieChart>
-                        <Pie data={statusChartData} cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={3} dataKey="value">
-                          {statusChartData.map((entry,i) => <Cell key={i} fill={entry.color} />)}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      {statusChartData.map((item,i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ width: 10, height: 10, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
-                          <div style={{ flex: 1, fontSize: 13, color: '#475569' }}>{item.name}</div>
-                          <div style={{ fontWeight: 700, fontSize: 14, color: '#1e293b' }}>{item.value}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : <div style={{ textAlign:'center', padding:40, color:'#94a3b8' }}>No data yet</div>}
-              </div>
-
-              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '22px 24px' }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: '#1e293b', marginBottom: 4 }}>Monthly Trend</div>
-                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>Issues reported over last 6 months</div>
-                {monthlyChartData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={220}>
-                    <LineChart data={monthlyChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} />
-                      <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
-                      <Tooltip />
-                      <Line type="monotone" dataKey="count" name="Issues" stroke="#6366f1" strokeWidth={2.5} dot={{ fill: '#6366f1', r: 4 }} activeDot={{ r: 6 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                ) : <div style={{ textAlign:'center', padding:40, color:'#94a3b8' }}>No data yet</div>}
-              </div>
-
-              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '22px 24px' }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: '#1e293b', marginBottom: 4 }}>Ward Leaderboard</div>
-                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>Issues per ward</div>
-                {wardChartData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={wardChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                      <XAxis dataKey="ward" tick={{ fontSize: 11, fill: '#64748b' }} />
-                      <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
-                      <Tooltip />
-                      <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Bar dataKey="total"    name="Total"    fill="#6366f1" radius={[4,4,0,0]} />
-                      <Bar dataKey="resolved" name="Resolved" fill="#10b981" radius={[4,4,0,0]} />
-                      <Bar dataKey="pending"  name="Pending"  fill="#f59e0b" radius={[4,4,0,0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : <div style={{ textAlign:'center', padding:40, color:'#94a3b8' }}>No ward data</div>}
-              </div>
+              <div style={{ fontSize: 12, color: '#64748b', marginTop: 10 }}>Exports a multi-sheet workbook with issue register, monthly totals, ward analysis, category/priority details, and available assignment/resolution history.</div>
             </div>
+
+<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+
+
+
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '22px 24px' }}>
+
+                <div style={{ fontWeight: 700, fontSize: 15, color: '#1e293b', marginBottom: 4 }}>Issues by Category</div>
+
+                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>Total reports per category</div>
+
+                {categoryChartData.length > 0 ? (
+
+                  <ResponsiveContainer width="100%" height={220}>
+
+                    <BarChart data={categoryChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+
+                      <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} />
+
+                      <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
+
+                      <Tooltip />
+
+                      <Bar dataKey="count" name="Issues" radius={[6,6,0,0]}>
+
+                        {categoryChartData.map((_,i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+
+                      </Bar>
+
+                    </BarChart>
+
+                  </ResponsiveContainer>
+
+                ) : <div style={{ textAlign:'center', padding:40, color:'#94a3b8' }}>No data yet</div>}
+
+              </div>
+
+
+
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '22px 24px' }}>
+
+                <div style={{ fontWeight: 700, fontSize: 15, color: '#1e293b', marginBottom: 4 }}>Status Breakdown</div>
+
+                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>Distribution across all statuses</div>
+
+                {statusChartData.length > 0 ? (
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+
+                    <ResponsiveContainer width="55%" height={220}>
+
+                      <PieChart>
+
+                        <Pie data={statusChartData} cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={3} dataKey="value">
+
+                          {statusChartData.map((entry,i) => <Cell key={i} fill={entry.color} />)}
+
+                        </Pie>
+
+                        <Tooltip />
+
+                      </PieChart>
+
+                    </ResponsiveContainer>
+
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+                      {statusChartData.map((item,i) => (
+
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+
+                          <div style={{ width: 10, height: 10, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
+
+                          <div style={{ flex: 1, fontSize: 13, color: '#475569' }}>{item.name}</div>
+
+                          <div style={{ fontWeight: 700, fontSize: 14, color: '#1e293b' }}>{item.value}</div>
+
+                        </div>
+
+                      ))}
+
+                    </div>
+
+                  </div>
+
+                ) : <div style={{ textAlign:'center', padding:40, color:'#94a3b8' }}>No data yet</div>}
+
+              </div>
+
+
+
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '22px 24px' }}>
+
+                <div style={{ fontWeight: 700, fontSize: 15, color: '#1e293b', marginBottom: 4 }}>Monthly Trend</div>
+
+                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>Issues reported over last 6 months</div>
+
+                {monthlyChartData.length > 0 ? (
+
+                  <ResponsiveContainer width="100%" height={220}>
+
+                    <LineChart data={monthlyChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+
+                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} />
+
+                      <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
+
+                      <Tooltip />
+
+                      <Line type="monotone" dataKey="count" name="Issues" stroke="#6366f1" strokeWidth={2.5} dot={{ fill: '#6366f1', r: 4 }} activeDot={{ r: 6 }} />
+
+                    </LineChart>
+
+                  </ResponsiveContainer>
+
+                ) : <div style={{ textAlign:'center', padding:40, color:'#94a3b8' }}>No data yet</div>}
+
+              </div>
+
+
+
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '22px 24px' }}>
+
+                <div style={{ fontWeight: 700, fontSize: 15, color: '#1e293b', marginBottom: 4 }}>Ward Leaderboard</div>
+
+                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>Issues per ward</div>
+
+                {wardChartData.length > 0 ? (
+
+                  <ResponsiveContainer width="100%" height={220}>
+
+                    <BarChart data={wardChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+
+                      <XAxis dataKey="ward" tick={{ fontSize: 11, fill: '#64748b' }} />
+
+                      <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
+
+                      <Tooltip />
+
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+
+                      <Bar dataKey="total"    name="Total"    fill="#6366f1" radius={[4,4,0,0]} />
+
+                      <Bar dataKey="resolved" name="Resolved" fill="#10b981" radius={[4,4,0,0]} />
+
+                      <Bar dataKey="pending"  name="Pending"  fill="#f59e0b" radius={[4,4,0,0]} />
+
+                    </BarChart>
+
+                  </ResponsiveContainer>
+
+                ) : <div style={{ textAlign:'center', padding:40, color:'#94a3b8' }}>No ward data</div>}
+
+              </div>
+
+            </div>
+
+
 
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '22px 24px', marginBottom: 20 }}>
+
               <div style={{ fontWeight: 700, fontSize: 15, color: '#1e293b', marginBottom: 4 }}>Priority Distribution</div>
+
               <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>Breakdown by priority level</div>
+
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+
                 {['low','medium','high','critical'].map(p => {
+
                   const pc = priorityColors[p]
+
                   const count = issues.filter(i => i.priority === p).length
+
                   const pct = stats.total > 0 ? Math.round((count / stats.total) * 100) : 0
+
                   return (
+
                     <div key={p} style={{ flex: '1 1 140px', background: pc.bg, borderRadius: 12, padding: '16px 20px' }}>
+
                       <div style={{ fontSize: 26, fontWeight: 700, color: pc.color }}>{count}</div>
+
                       <div style={{ fontSize: 14, fontWeight: 600, color: pc.color, marginBottom: 8, textTransform: 'capitalize' }}>{p}</div>
+
                       <div style={{ height: 4, background: 'rgba(0,0,0,0.08)', borderRadius: 4, overflow: 'hidden' }}>
+
                         <div style={{ width: `${pct}%`, height: '100%', background: pc.color, borderRadius: 4 }} />
+
                       </div>
+
                       <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>{pct}% of total</div>
+
                     </div>
+
                   )
+
                 })}
+
               </div>
+
             </div>
+
           </>
+
         )}
+
+
 
         {/* ── ISSUES TABLE TAB ── */}
+
         {activeTab === 'issues' && (
+
           <>
+
             <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+
               <input
+
                 style={{ flex: '1 1 200px', minWidth: 180, padding: '9px 14px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', background: '#fff', color: '#1e293b' }}
+
                 placeholder="🔍  Search issues…"
+
                 value={search}
+
                 onChange={e => setSearch(e.target.value)}
+
               />
+
               <select value={filterStatus} onChange={e => setFStatus(e.target.value)} style={{ padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: 13, outline: 'none', background: '#fff', color: '#475569', cursor: 'pointer' }}>
+
                 <option value="all">All Statuses</option>
+
                 {Object.entries(statusColors).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+
               </select>
+
               <select value={filterCat} onChange={e => setFCat(e.target.value)} style={{ padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: 13, outline: 'none', background: '#fff', color: '#475569', cursor: 'pointer' }}>
+
                 <option value="all">All Categories</option>
+
                 {categories.map(c => <option key={c.id} value={String(c.id)}>{c.icon} {c.name}</option>)}
+
               </select>
+
               <select value={filterWard} onChange={e => setFWard(e.target.value)} style={{ padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: 13, outline: 'none', background: '#fff', color: '#475569', cursor: 'pointer' }}>
+
                 <option value="all">All Wards</option>
+
                 {wards.map(w => <option key={w} value={w}>{w}</option>)}
+
               </select>
+
               <select value={filterPriority} onChange={e => setFPri(e.target.value)} style={{ padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: 13, outline: 'none', background: '#fff', color: '#475569', cursor: 'pointer' }}>
+
                 <option value="all">All Priorities</option>
+
                 <option value="low">Low</option>
+
                 <option value="medium">Medium</option>
+
                 <option value="high">High</option>
+
                 <option value="critical">Critical</option>
+
               </select>
+
               <span style={{ fontSize: 13, color: '#94a3b8' }}>{filtered.length} issue{filtered.length !== 1 ? 's' : ''}</span>
+
             </div>
+
+
 
             {loading ? (
+
               <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8' }}>Loading issues…</div>
+
             ) : filtered.length === 0 ? (
+
               <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8' }}>
+
                 <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>No issues match your filters
+
               </div>
+
             ) : (
+
               <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', overflowX: 'auto', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+
                   <thead>
+
                     <tr>
+
                       {/* ✅ Added Ward and Upvotes to headers */}
+
                       {['Issue', 'Category', 'Location', 'Upvotes', 'Priority', 'Status', 'Assigned To', 'ML Category', 'Reported', 'Actions'].map(h => (
+
                         <th key={h} style={{ padding: '10px 8px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+
                       ))}
+
                     </tr>
+
                   </thead>
+
                   <tbody>
+
                     {filtered.map(issue => {
+
                       const sc = statusColors[issue.status] || statusColors.pending
+
                       const pc = priorityColors[issue.priority] || priorityColors.low
+
                       const thumb = issue.issue_images?.[0]?.image_url
+
                       const reporterName = reporters[issue.reported_by] || 'Unknown'
 
+
+
                       return (
+
                         <tr
+
                           key={issue.id}
+
                           style={{ cursor: 'pointer' }}
+
                           onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+
                           onMouseLeave={e => e.currentTarget.style.background = ''}
+
                           onClick={() => openModal(issue)}
+
                         >
+
                           {/* ISSUE — thumbnail + title + reporter */}
+
                           <td style={{ padding: '10px 8px', borderBottom: '1px solid #f1f5f9', maxWidth: 220 }}>
+
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+
                               {thumb ? (
+
                                 <img
+
                                   src={thumb}
+
                                   alt=""
+
                                   style={{ width: 38, height: 38, borderRadius: 8, objectFit: 'cover', flexShrink: 0, border: '1px solid #e2e8f0' }}
+
                                 />
+
                               ) : (
+
                                 <div style={{ width: 38, height: 38, borderRadius: 8, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0, border: '1px solid #e2e8f0' }}>
+
                                   {issue.categories?.icon || '📌'}
+
                                 </div>
+
                               )}
+
                               <div style={{ overflow: 'hidden' }}>
+
                                 <div style={{ fontWeight: 600, color: '#1e293b', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 150 }}>
+
                                   {issue.title}
+
                                 </div>
+
                                 <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+
                                   by {reporterName}
+
                                 </div>
+
                               </div>
+
                             </div>
+
                           </td>
+
+
 
                           {/* CATEGORY */}
+
                           <td style={{ padding: '10px 8px', fontSize: 13, color: '#374151', borderBottom: '1px solid #f1f5f9', maxWidth: 120 }}>
+
                             {issue.categories ? `${issue.categories.icon || ''} ${issue.categories.name}` : '—'}
+
                           </td>
+
+
 
                           {/* LOCATION — city with ward badge underneath */}
+
                           <td style={{ padding: '10px 8px', fontSize: 13, color: '#374151', borderBottom: '1px solid #f1f5f9' }}>
+
                             <div style={{ marginBottom: 4 }}>{issue.city || issue.address || '—'}</div>
+
                             {issue.ward ? (
+
                               <span style={{
+
                                 display: 'inline-flex', alignItems: 'center', gap: 4,
+
                                 background: '#f0f9ff', color: '#0369a1',
+
                                 borderRadius: 20, padding: '2px 8px',
+
                                 fontSize: 11, fontWeight: 600,
+
                               }}>
+
                                 🗺️ {issue.ward}
+
                               </span>
+
                             ) : (
+
                               <span style={{ color: '#cbd5e1', fontSize: 13 }}>—</span>
+
                             )}
+
                           </td>
+
+
 
                           {/* ✅ UPVOTES — new dedicated column */}
+
                           <td style={{ padding: '10px 8px', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
+
                             <span style={{
+
                               display: 'inline-flex', alignItems: 'center', gap: 4,
+
                               background: (issue.upvotes || 0) > 0 ? '#fef3c7' : '#f8fafc',
+
                               color: (issue.upvotes || 0) > 0 ? '#92400e' : '#94a3b8',
+
                               borderRadius: 20, padding: '3px 10px',
+
                               fontSize: 13, fontWeight: 700,
+
                             }}>
+
                               👍 {issue.upvotes || 0}
+
                             </span>
+
                           </td>
+
+
 
                           {/* PRIORITY */}
+
                           <td style={{ padding: '10px 8px', borderBottom: '1px solid #f1f5f9' }}>
+
                             <span style={{ display: 'inline-flex', alignItems: 'center', background: pc.bg, color: pc.color, borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+
                               {issue.priority || 'low'}
+
                             </span>
+
                           </td>
+
+
 
                           {/* STATUS */}
+
                           <td style={{ padding: '10px 8px', borderBottom: '1px solid #f1f5f9' }}>
+
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: sc.bg, color: sc.color, borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 500 }}>
+
                               <span style={{ width: 6, height: 6, borderRadius: '50%', background: sc.dot, flexShrink: 0 }} />
+
                               {sc.label}
+
                             </span>
+
                           </td>
+
+
 
                           {/* ASSIGNED TO (department / NGO) */}
+
                           <td style={{ padding: '10px 8px', borderBottom: '1px solid #f1f5f9', maxWidth: 140 }}>
+
                             {issue.assigned_org && orgName(issue.assigned_org) ? (
+
                               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#ecfdf5', color: '#065f46', borderRadius: 10, padding: '3px 8px', fontSize: 11, fontWeight: 600, lineHeight: 1.3 }}>
+
                                 {orgs.find(o => o.id === issue.assigned_org)?.type === 'ngo' ? '🤝' : '🏢'} {orgName(issue.assigned_org)}
+
                               </span>
+
                             ) : (
+
                               <span style={{ color: '#cbd5e1', fontSize: 13 }}>—</span>
+
                             )}
+
                           </td>
+
+
 
                           {/* ML CATEGORY */}
+
                           <td style={{ padding: '10px 8px', borderBottom: '1px solid #f1f5f9' }}>
+
                             {issue.ml_category ? (
+
                               <div>
+
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+
                                   <span style={{ fontSize: 12 }}>🤖</span>
+
                                   <span style={{ fontSize: 13, fontWeight: 600, color: '#4c1d95', textTransform: 'capitalize' }}>
+
                                     {issue.ml_category.replace(/_/g, ' ')}
+
                                   </span>
+
                                 </div>
+
                                 {issue.ml_confidence && (
+
                                   <div style={{ fontSize: 11, color: '#7c3aed', marginTop: 2 }}>
+
                                     {Math.round(issue.ml_confidence * 100)}% confidence
+
                                   </div>
+
                                 )}
+
                               </div>
+
                             ) : (
+
                               <span style={{ color: '#cbd5e1', fontSize: 13 }}>—</span>
+
                             )}
+
                           </td>
+
+
 
                           {/* REPORTED DATE */}
+
                           <td style={{ padding: '10px 8px', fontSize: 13, color: '#64748b', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
+
                             {issue.created_at
+
                               ? new Date(issue.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })
+
                               : '—'}
+
                           </td>
+
+
 
                           {/* ACTIONS */}
+
                           <td style={{ padding: '10px 8px', borderBottom: '1px solid #f1f5f9' }}>
+
                             <button
+
                               onClick={e => { e.stopPropagation(); openModal(issue) }}
+
                               onMouseEnter={e => e.currentTarget.style.background = '#334155'}
+
                               onMouseLeave={e => e.currentTarget.style.background = '#1e293b'}
+
                               style={{
+
                                 padding: '6px 12px', borderRadius: 7, border: 'none',
+
                                 background: '#1e293b', fontSize: 13, cursor: 'pointer',
+
                                 color: '#fff', fontWeight: 600, whiteSpace: 'nowrap',
+
                                 transition: 'background 0.15s',
+
                               }}
+
                             >
+
                               Manage
+
                             </button>
+
                           </td>
+
                         </tr>
+
                       )
+
                     })}
+
                   </tbody>
+
                 </table>
+
               </div>
+
             )}
+
           </>
+
         )}
+
       </main>
 
+
+
       {/* MODAL */}
+
       {selectedIssue && (
+
         <div
+
           style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20, backdropFilter: 'blur(4px)' }}
+
           onClick={e => e.target === e.currentTarget && closeModal()}
+
         >
+
           <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 580, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,0.25)', padding: 28 }}>
 
+
+
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+
               <div style={{ fontSize: 20, fontWeight: 700, color: '#1e293b', paddingRight: 16 }}>{selectedIssue.title}</div>
+
               <button onClick={closeModal} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#94a3b8', flexShrink: 0 }}>✕</button>
+
             </div>
+
+
 
             <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 16 }}>
+
               Reported {new Date(selectedIssue.created_at).toLocaleString('en-IN')}
+
               {selectedIssue.ward ? ` · Ward: ${selectedIssue.ward}` : ''}
+
               {selectedIssue.city ? ` · ${selectedIssue.city}` : ''}
+
               {selectedIssue.reported_by ? ` · by ${reporters[selectedIssue.reported_by] || 'Unknown'}` : ''}
+
             </div>
+
+
 
             {/* Status + Priority + Upvotes badges */}
+
             <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+
               {(() => {
+
                 const sc = statusColors[selectedIssue.status] || statusColors.pending
+
                 const pc = priorityColors[selectedIssue.priority] || priorityColors.low
+
                 return (
+
                   <>
+
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: sc.bg, color: sc.color, borderRadius: 20, padding: '4px 12px', fontSize: 13, fontWeight: 500 }}>
+
                       <span style={{ width: 7, height: 7, borderRadius: '50%', background: sc.dot }} />{sc.label}
+
                     </span>
+
                     <span style={{ display: 'inline-flex', alignItems: 'center', background: pc.bg, color: pc.color, borderRadius: 20, padding: '4px 12px', fontSize: 13, fontWeight: 600, textTransform: 'capitalize' }}>
+
                       {selectedIssue.priority || 'low'} priority
+
                     </span>
+
                     {/* ✅ Upvotes badge in modal */}
+
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: (selectedIssue.upvotes || 0) > 0 ? '#fef3c7' : '#f1f5f9', color: (selectedIssue.upvotes || 0) > 0 ? '#92400e' : '#94a3b8', borderRadius: 20, padding: '4px 12px', fontSize: 13, fontWeight: 700 }}>
+
                       👍 {selectedIssue.upvotes || 0} upvote{selectedIssue.upvotes !== 1 ? 's' : ''}
+
                     </span>
+
                     {/* ✅ Ward badge in modal */}
+
                     {selectedIssue.ward && (
+
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#f0f9ff', color: '#0369a1', borderRadius: 20, padding: '4px 12px', fontSize: 13, fontWeight: 600 }}>
+
                         🗺️ {selectedIssue.ward}
+
                       </span>
+
                     )}
+
                   </>
+
                 )
+
               })()}
+
             </div>
 
+
+
             {/* Images */}
+
             {selectedIssue.issue_images?.length > 0 && (
+
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+
                 {selectedIssue.issue_images.map((img,i) => (
+
                   <img key={i} src={img.image_url} alt="Issue" style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 10, border: '1px solid #e2e8f0' }} />
+
                 ))}
+
               </div>
+
             )}
 
+
+
             {/* Description */}
+
             {selectedIssue.description && (
+
               <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.7, marginBottom: 16, background: '#f8fafc', borderRadius: 8, padding: 12 }}>
+
                 {selectedIssue.description}
+
               </p>
+
             )}
+
+
 
             <div style={{ borderBottom: '1px solid #f1f5f9', marginBottom: 16 }} />
 
+
+
             {/* AI Analysis */}
+
             {selectedIssue.ml_category && (
+
               <div style={{ marginBottom: 16, background: 'linear-gradient(135deg, #f5f3ff, #ede9fe)', borderRadius: 10, padding: '12px 14px', border: '1px solid #ddd6fe' }}>
+
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
+
                   🤖 AI Analysis
+
                 </div>
+
                 <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+
                   <div>
+
                     <div style={{ fontSize: 11, color: '#7c3aed', marginBottom: 2 }}>Detected Category</div>
+
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#4c1d95', textTransform: 'capitalize' }}>
+
                       {selectedIssue.ml_category.replace(/_/g, ' ')}
+
                     </div>
+
                   </div>
+
                   {selectedIssue.ml_confidence && (
+
                     <div>
+
                       <div style={{ fontSize: 11, color: '#7c3aed', marginBottom: 2 }}>Confidence</div>
+
                       <div style={{ fontSize: 14, fontWeight: 700, color: '#4c1d95' }}>
+
                         {Math.round(selectedIssue.ml_confidence * 100)}%
+
                       </div>
+
                     </div>
+
                   )}
+
                   <div>
+
                     <div style={{ fontSize: 11, color: '#7c3aed', marginBottom: 2 }}>Suggested Priority</div>
+
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#4c1d95', textTransform: 'capitalize' }}>
+
                       {selectedIssue.priority}
+
                     </div>
+
                   </div>
+
                 </div>
+
               </div>
+
             )}
 
+
+
             {/* ── Assign to Department / NGO ── */}
+
             {(() => {
+
               const suggestion = suggestedOrgFor(selectedIssue)
+
               const chosen = orgs.find(o => o.id === assignOrg)
+
               const departments = orgs.filter(o => o.type === 'department')
+
               const ngos = orgs.filter(o => o.type === 'ngo')
+
               return (
+
                 <div style={{ marginBottom: 20, border: '1px solid #d1fae5', background: '#f0fdf4', borderRadius: 10, padding: '12px 14px' }}>
+
                   <label style={{ fontSize: 13, fontWeight: 700, color: '#065f46', marginBottom: 8, display: 'block' }}>
+
                     🏢 Assign to Department / NGO
+
                   </label>
 
+
+
                   {suggestion && suggestion.id !== assignOrg && (
+
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: '#fff', border: '1px dashed #a7f3d0', borderRadius: 8, padding: '8px 10px', marginBottom: 10, fontSize: 13, color: '#065f46' }}>
+
                       <span>🤖 AI suggests: <strong>{suggestion.name}</strong></span>
+
                       <button
+
                         type="button"
+
                         onClick={() => setAssignOrg(suggestion.id)}
+
                         style={{ padding: '5px 12px', borderRadius: 6, border: 'none', background: '#059669', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+
                       >
+
                         Use suggestion
+
                       </button>
+
                     </div>
+
                   )}
+
+
 
                   <select value={assignOrg} onChange={e => setAssignOrg(e.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #a7f3d0', borderRadius: 8, fontSize: 14, outline: 'none', color: '#1e293b', background: '#fff' }}>
+
                     <option value="">— Not assigned —</option>
+
                     {departments.length > 0 && (
+
                       <optgroup label="Government departments">
+
                         {departments.map(o => <option key={o.id} value={o.id}>🏢 {o.name}</option>)}
+
                       </optgroup>
+
                     )}
+
                     {ngos.length > 0 && (
+
                       <optgroup label="Partner NGOs">
+
                         {ngos.map(o => <option key={o.id} value={o.id}>🤝 {o.name}</option>)}
+
                       </optgroup>
+
                     )}
+
                   </select>
 
+
+
                   {orgs.length === 0 && (
+
                     <div style={{ fontSize: 12, color: '#b45309', marginTop: 6 }}>
+
                       No departments or NGOs found. Run the organizations SQL in Supabase first.
+
                     </div>
+
                   )}
+
+
 
                   {chosen && (chosen.contact_person || chosen.phone || chosen.email) && (
+
                     <div style={{ fontSize: 12, color: '#475569', marginTop: 8 }}>
+
                       Contact: {[chosen.contact_person, chosen.phone, chosen.email].filter(Boolean).join(' · ')}
+
                     </div>
+
                   )}
+
+
 
                   {assignOrg && (
+
                     <div style={{ marginTop: 10 }}>
+
                       <label
+
                         style={{
+
                           display: 'block',
+
                           fontSize: 12,
+
                           fontWeight: 700,
+
                           color: '#065f46',
+
                           marginBottom: 6,
+
                         }}
+
                       >
+
                         📝 Note for Citizen
+
                       </label>
 
+
+
                       <textarea
+
                         value={orgNote}
+
                         onChange={e => setOrgNote(e.target.value)}
+
                         placeholder="Write a note for the citizen (optional). This will be shown as an official comment."
+
                         style={{
+
                           width: '100%',
+
                           padding: '10px 12px',
+
                           border: '1.5px solid #a7f3d0',
+
                           borderRadius: 8,
+
                           fontSize: 13,
+
                           outline: 'none',
+
                           color: '#1e293b',
+
                           minHeight: 70,
+
                           resize: 'vertical',
+
                           fontFamily: 'inherit',
+
                           boxSizing: 'border-box',
+
                           background: '#ffffff',
+
                         }}
+
                       />
 
+
+
                       <div
+
                         style={{
+
                           fontSize: 11,
+
                           color: '#64748b',
+
                           marginTop: 5,
+
                         }}
+
                       >
+
                         This note will be visible to the citizen as an official update.
+
                       </div>
+
                     </div>
+
                   )}
+
                 </div>
+
               )
+
             })()}
 
+
+
             <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6, display: 'block' }}>Update Status</label>
+
             <select value={newStatus} onChange={e => setNewStatus(e.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', color: '#1e293b', marginBottom: 16, background: '#fff' }}>
+
               {Object.entries(statusColors).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+
             </select>
+
+
 
             <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6, display: 'block' }}>Assign Officer</label>
+
             <select value={assignTo} onChange={e => setAssignTo(e.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', color: '#1e293b', marginBottom: 24, background: '#fff' }}>
+
               <option value="">— Unassigned —</option>
+
               {officers.map(o => <option key={o.id} value={o.id}>{o.full_name} ({o.role})</option>)}
+
             </select>
 
+
+
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+
               <button onClick={closeModal} style={{ padding: '10px 20px', borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#fff', fontSize: 14, cursor: 'pointer', color: '#64748b', fontWeight: 500 }}>
+
                 Cancel
+
               </button>
+
               <button
+
                 onClick={handleUpdateIssue}
+
                 disabled={updatingStatus}
+
                 style={{ padding: '10px 24px', borderRadius: 8, border: 'none', background: updatingStatus ? '#94a3b8' : '#1e293b', fontSize: 14, cursor: updatingStatus ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: 600 }}
+
               >
+
                 {updatingStatus ? 'Saving…' : 'Save Changes'}
+
               </button>
+
             </div>
+
           </div>
+
         </div>
+
       )}
 
+
+
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
     </div>
+
   )
+
 }

@@ -601,7 +601,8 @@ export default function Navbar() {
               display: none !important;
             }
 
-            .navbar-mobile-button {
+            .navbar-mo
+bile-button {
               display: block !important;
             }
           }
